@@ -1,0 +1,6 @@
+# Build output — the cool binary `go run .` gives us. Regenerated, not versioned.
+/ass
+/dist/
+
+# Local overrides of the committed ass.toml, if you keep one.
+/ass.local.toml

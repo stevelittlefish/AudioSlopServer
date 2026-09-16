@@ -23,9 +23,9 @@ it honest — if it's done, tick it; if it's abandoned, say so.)
 
 Drive **stem-separator** through the whole lifecycle. No swapping yet.
 
-- [ ] Project skeleton: `go.mod`, `cmd/ass`, `internal/…`, `go run .` works
-- [ ] Boot sequence prints **ASS** in big ASCII art (non-negotiable, rule)
-- [ ] TOML config load (`[memory]`, `[gpu]`, `[services.*]`)
+- [x] Project skeleton: `go.mod`, `cmd/ass`, `internal/…`, `go run .` works
+- [x] Boot sequence prints **ASS** in big ASCII art (non-negotiable, rule)
+- [x] TOML config load (`[memory]`, `[gpu]`, `[services.*]`)
 - [ ] Supervisor: start/stop a backend container via the Docker API
 - [ ] Health-wait: poll backend `/health` until ready (with a timeout)
 - [ ] Unified async job API: `POST /v1/{service}/jobs`, `GET /v1/jobs/{id}`,

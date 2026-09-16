@@ -1,0 +1,25 @@
+# ASS configuration. Everything ASS knows lives here, because environment
+# variables are how you lose an afternoon (rule 4).
+
+[memory]
+# Big-server default. Peasants with 16GB should drop this to ~8000 and watch
+# their services fall back to "stop".
+ram_budget_mb = 96000
+
+[gpu]
+device = 0             # the one card ASS is allowed to monopolize
+vram_budget_mb = 24000 # card size minus headroom; covers pinned model + park tax
+context_tax_mb = 500   # VRAM a parked (alive) process holds, charged per backend
+
+[server]
+addr = ":8080"         # where ASS itself listens
+
+# --- Backends -------------------------------------------------------------
+
+[services.demucs]
+image = "stem-separation:local"
+port  = 5336
+verb  = "separate"
+evict = "park"          # small enough to keep parked in RAM
+ram_reserve_mb = 1000
+idle_ttl = "0"          # never reclaim parked RAM on the big server
