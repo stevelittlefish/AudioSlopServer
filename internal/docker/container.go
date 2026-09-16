@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -163,12 +162,6 @@ func (c *Client) ImageExists(ctx context.Context, image string) (bool, error) {
 	}
 	return true, nil
 }
-
-// drain is a tiny helper for endpoints we call for effect and whose body we
-// don't need. (Kept for symmetry; most calls above pass out=nil already.)
-func drain(r io.Reader) { _, _ = io.Copy(io.Discard, r) }
-
-var _ = drain // not always used; here for the odd debugging session
 
 // apiError is the daemon's JSON error shape: {"message": "..."}.
 type apiError struct {
