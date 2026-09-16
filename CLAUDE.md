@@ -265,6 +265,34 @@ verb  = "generate"
 evict = "stop"            # too heavy to keep parked; just unload it
 ```
 
+### Deployment topology
+
+**ASS orchestrates; it does not contain.** ASS never runs a backend inside
+itself — it talks to the **host Docker daemon** and asks it to start/stop backend
+containers. Those backends are always siblings on the host, getting the host's
+one GPU via `--gpus`, no matter where ASS itself runs. Two ways to run ASS:
+
+- **Bare host binary** (dev default, `./run.sh`): connects to the daemon at
+  `/var/run/docker.sock`, reaches backends at `localhost:<port>`.
+- **In its own container** (how we deploy): mount the host socket
+  (`-v /var/run/docker.sock:/var/run/docker.sock`) — Docker-*out*-of-Docker, not
+  nested DinD. ASS then controls sibling containers and addresses them by
+  container name on a shared Docker network.
+
+Two properties keep both cases clean, and both are already true by design:
+
+- **ASS needs zero GPU** — it never opens a CUDA context. Only backends get
+  `--gpus`. The ASS image is tiny and unprivileged (bar the socket).
+- **ASS reads results over HTTP**, not shared disk (via the backend's
+  `/v1/jobs/{id}/result`), so it never has to mount a backend's output volumes.
+
+**Design consequence:** how ASS locates a backend (`localhost:5336` vs
+`http://stem-separation:5336`) is config/derived, never hardcoded. The supervisor
+takes the daemon connection + a per-backend base-URL scheme, both from config, so
+host-vs-container is configuration, not a code change.
+
+We run bare metal for dev/testing (easier) and dockerise for deployment.
+
 ### Concurrency
 
 - Requests for the **same** resident backend run against it directly (its own
