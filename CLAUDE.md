@@ -211,18 +211,54 @@ on a big card; another reason the peasant config leans toward `stop`.
 
 ### The backend contract
 
-Every backend ASS drives is expected to expose (the existing services already do
-most of this — the pattern is stem-separator's):
+**Every service we wrap is open source, so we fork every one of them.** That
+means we don't adapt to N different backend shapes — we make all N conform to
+*this* contract. (Where a fork isn't yet updated, ASS adapts per-service, e.g.
+maps stem-separator's `stems[]` onto `artifacts[]` — but the goal is one shape.)
 
 - `GET  /health` — readiness probe.
 - `GET  /v1/info` — model, device, capabilities.
 - `POST /v1/<verb>` — submit a job, returns `{ job_id, state }`. (`verb` is
   service-specific: `separate`, `generate`, `transcribe`, `align`, …)
-- `GET  /v1/jobs/{id}` — `{ state: queued|running|succeeded|failed, ... }`.
-- `GET  /v1/jobs/{id}/<artifact>` — download result(s).
+- `GET  /v1/jobs/{id}` — `{ state: queued|running|succeeded|failed,
+  artifacts: [...] }`. On success, **enumerates the job's artifacts** so ASS
+  knows what to harvest (see below).
+- `GET  /v1/jobs/{id}/result/{name}` — download one named artifact.
 - `POST /park` / `POST /unpark` — **our addition** (we fork these services, so we
   can). `park`: `model.to('cpu'); torch.cuda.empty_cache()`. `unpark`: back to
   cuda. `empty_cache()` is mandatory or VRAM never actually frees.
+
+### Jobs produce a set of named, typed artifacts
+
+A job is **not** "a WAV". It yields zero-to-many **artifacts**, because DEMUCS
+returns 2–4 stems and YuE returns a FLAC *plus* an ABC score *plus* lyrics — not
+all of which are even audio. So the artifact is the unit:
+
+```
+Artifact {
+  name         # unique within the job: "vocals", "audio.flac", "score.abc"
+  kind         # advisory role for clients: audio | stem | score | lyrics | metadata | other
+  content_type # real MIME — not everything is audio/*
+  bytes        # size
+}
+```
+
+Single-output services (Stable Audio 3, ACE-Step) return exactly one artifact;
+DEMUCS returns several; YuE a mixed bag. Same shape for all. `kind` lets a client
+("give me the audio one") avoid hardcoding filenames.
+
+### Harvest on completion (results outlive the model)
+
+Because eviction can stop a backend's container **right after it finishes**, a
+result living only inside that container would vanish on the next swap — "your
+song disappeared because we loaded a different model" is unacceptable.
+
+So: **when a job succeeds, ASS harvests every artifact from the backend into its
+own results store (on disk, recorded in sqlite) BEFORE the backend is eligible
+for eviction.** After that, ASS serves artifacts from its own store, fully
+decoupled from the backend's lifecycle. This also preserves the "ASS reads over
+HTTP, no shared volumes" property — ASS pulls each artifact once via the
+backend's download endpoint, then owns the bytes.
 
 ### ASS unified API (mirrors the backend job envelope)
 
@@ -231,9 +267,19 @@ callers don't relearn per backend:
 
 - `POST /v1/{service}/jobs` → `{ job_id }` — submit (ASS ensures the service is
   resident first; the request may queue behind a model swap).
-- `GET  /v1/jobs/{id}` → `{ service, state, ... }` — poll (SSE stream later).
-- `GET  /v1/jobs/{id}/result[/<name>]` → artifact.
+- `GET  /v1/jobs/{id}` → `{ service, state, artifacts: [...] }` — poll (SSE
+  stream later). `artifacts` is populated once ASS has harvested them.
+- `GET  /v1/jobs/{id}/result` → the artifact list (or streams the single
+  artifact directly when there's exactly one, as a convenience).
+- `GET  /v1/jobs/{id}/result/{name}` → download one named artifact, served from
+  ASS's own store — available even after the backend has been evicted.
 - `GET  /v1/backends` → each backend's state, queue depth, last-used, VRAM/RAM.
+
+### Job store schema (sqlite)
+
+- `jobs` — `id, service, state, error, created_at, started_at, finished_at`.
+- `artifacts` — `job_id, name, kind, content_type, path, bytes` (path points into
+  ASS's on-disk results store).
 
 ### Config (TOML — rule 4)
 
