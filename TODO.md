@@ -26,8 +26,8 @@ Drive **stem-separator** through the whole lifecycle. No swapping yet.
 - [x] Project skeleton: `go.mod`, `cmd/ass`, `internal/…`, `go run .` works
 - [x] Boot sequence prints **ASS** in big ASCII art (non-negotiable, rule)
 - [x] TOML config load (`[memory]`, `[gpu]`, `[services.*]`)
-- [ ] Supervisor: start/stop a backend container via the Docker API
-- [ ] Health-wait: poll backend `/health` until ready (with a timeout)
+- [x] Supervisor: start/stop a backend container via the Docker API
+- [x] Health-wait: poll backend `/health` until ready (with a timeout)
 - [ ] Unified async job API: `POST /v1/{service}/jobs`, `GET /v1/jobs/{id}`,
       `GET /v1/jobs/{id}/result`, `GET /v1/backends`
 - [ ] sqlite job store (`modernc.org/sqlite`)

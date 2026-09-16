@@ -27,10 +27,15 @@ type Memory struct {
 // GPU describes the single card ASS is allowed to boss around, plus the VRAM
 // accounting knobs. vram_budget_mb must cover the pinned model AND the context
 // tax of every parked backend — see the architecture notes.
+//
+// Enabled is the on/off switch: on this GPU-less dev box (and a peasant laptop)
+// it's false, so ASS requests no GPU and everything still runs. On the real
+// server it's true with device = 0.
 type GPU struct {
-	Device       int `toml:"device"`
-	VRAMBudgetMB int `toml:"vram_budget_mb"`
-	ContextTaxMB int `toml:"context_tax_mb"`
+	Enabled      bool `toml:"enabled"`
+	Device       int  `toml:"device"`
+	VRAMBudgetMB int  `toml:"vram_budget_mb"`
+	ContextTaxMB int  `toml:"context_tax_mb"`
 }
 
 // Server is where ASS itself listens. Nothing exotic.
@@ -53,12 +58,26 @@ const (
 
 // Service is a single audio backend ASS multiplexes onto the GPU.
 type Service struct {
-	Image        string      `toml:"image"`
-	Port         int         `toml:"port"`
-	Verb         string      `toml:"verb"`  // job verb: separate, generate, transcribe...
-	Evict        EvictPolicy `toml:"evict"` // park | stop
-	RAMReserveMB int         `toml:"ram_reserve_mb"`
-	IdleTTL      Duration    `toml:"idle_ttl"` // 0 = never reclaim parked RAM
+	Image        string            `toml:"image"`
+	Container    string            `toml:"container"` // container name; defaults to "ass-<service>"
+	Port         int               `toml:"port"`      // published, and passed to the backend
+	Verb         string            `toml:"verb"`      // job verb: separate, generate, transcribe...
+	Env          map[string]string `toml:"env"`       // extra env for the backend container
+	Volumes      []string          `toml:"volumes"`   // "host:container[:ro]" mounts (weight caches etc.)
+	ShmSizeMB    int               `toml:"shm_size_mb"`
+	Evict        EvictPolicy       `toml:"evict"` // park | stop
+	RAMReserveMB int               `toml:"ram_reserve_mb"`
+	IdleTTL      Duration          `toml:"idle_ttl"` // 0 = never reclaim parked RAM
+}
+
+// ContainerName is the container name for this service, defaulting to
+// "ass-<service>" when not set. The service's own name is passed in because the
+// Service doesn't carry it (it's the map key).
+func (s Service) ContainerName(service string) string {
+	if s.Container != "" {
+		return s.Container
+	}
+	return "ass-" + service
 }
 
 // Duration is a time.Duration that unmarshals from a TOML string like "10m",
