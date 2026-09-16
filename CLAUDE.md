@@ -2,6 +2,10 @@
 
 Guidance for working on this project.
 
+> **Start here each session:** `TODO.md` tracks what's done and what's next.
+> Read it before starting work, and keep it current — across sessions it's the
+> closest thing to memory this project has.
+
 ## What it is
 
 ASS is a single-GPU orchestration server for multiple heavyweight audio AI
