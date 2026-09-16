@@ -1,0 +1,11 @@
+# Everything in here is a clone made by pull.sh. Ignore all of it, and keep only
+# the files that describe how to get it back — plus go.mod, which keeps the
+# clones out of the ASS build (see the comment in it).
+#
+# A wildcard rather than a list of directory names, so adding a repository means
+# editing pull.sh alone and never this file.
+*
+!.gitignore
+!go.mod
+!pull.sh
+!README.md
