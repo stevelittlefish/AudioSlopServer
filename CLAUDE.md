@@ -35,6 +35,16 @@ monopolizing its own.
   the masses, and the masses can't consume it while it's on our hard drive.
   Commit to `main`, then push it straight out.
 
+## Banned words
+
+Certain words will earn you a drop-kick to the face. Do not use them, in prose,
+comments, commit messages, or anywhere else:
+
+- **"load-bearing"** — nothing here holds up a building.
+- **"seam"** — we are not tailors.
+
+The list may grow as further crimes against language are discovered.
+
 ## The Great Philosophy of Software Languages
 
 1. **No JavaScript on the server. Ever.** We are not failed front-end
