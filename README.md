@@ -55,12 +55,25 @@ We hold ourselves to the highest standards. Here they are.
 3. **Consistent API across sub-services.** A fairly consistent API shape across
    all audio sub-services, so callers don't relearn everything per service.
    Exceptions allowed where a service genuinely needs one.
+4. **Config in TOML, not environment variables.** No env vars except where
+   absolutely necessary. All configuration lives in TOML files.
+5. **Dependencies are expensive.** Every dependency is a cost to justify. Prefer
+   the standard library; pull something in only when it genuinely earns its keep.
+6. **Configurable memory footprint.** Runs on a 128GB server and on a 16GB
+   laptop. Which services stay resident in RAM vs. fully unload is configured
+   per service.
 
 ### Version Control
 
 We **Slop straight to `main`** and push immediately. No branches, no PRs —
 those are for people who care about their code. Slop is for the masses, and the
 masses can't consume it while it's sitting on our hard drive.
+
+## License
+
+MIT — see [LICENSE](LICENSE). ASS talks to every backend over HTTP, across a
+process boundary, and never vendors third-party source, so it stays permissive
+no matter how copyleft the backends behind it are.
 
 ## Status
 

@@ -83,6 +83,26 @@ monopolizing its own.
    shape across all the different audio sub-services, so callers don't have to
    relearn everything per service. Not a hard rule — if a service genuinely
    needs something different, exceptions are allowed.
+4. **Config in TOML, not environment variables.** No environment variables
+   except where absolutely necessary (i.e. something genuinely outside our
+   control demands one). All configuration lives in TOML files. A dependency for
+   TOML parsing is acceptable.
+5. **Dependencies are expensive.** In general, treat every dependency as a cost
+   to be justified. Prefer the standard library and a little of our own code
+   over pulling something in. Some deps are worth it (TOML, sqlite) — but the
+   default answer is "do we really need it?"
+6. **Configurable memory footprint.** ASS must run on a 128GB server *and* on
+   some poor peasant's 16GB laptop. Memory strategy (which services stay resident
+   in RAM vs. get fully unloaded) is configured per service in TOML, with sane
+   limits so we never assume the big-server case.
+7. **Never vendor third-party source into this repo.** The boundary with every
+   backend is HTTP, across a process/container line. We never copy their code in
+   and never import it. This keeps ASS clear of copyleft (GPL etc.): running a
+   GPL'd backend as a separate program we talk to over a socket is mere
+   aggregation, not a derivative work, so ASS stays permissively licensed (MIT).
+   Corollary: keep Go dependencies to permissive licenses (MIT/BSD/Apache) —
+   those *are* linked into our binary. Need a backend's logic? Reimplement it or
+   wrap it behind a service; don't paste it in.
 
 ## Architecture notes
 
