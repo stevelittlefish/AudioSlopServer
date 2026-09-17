@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/stevelittlefish/AudioSlopServer/internal/arbiter"
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 	"github.com/stevelittlefish/AudioSlopServer/internal/engine"
 	"github.com/stevelittlefish/AudioSlopServer/internal/store"
@@ -21,14 +22,15 @@ import (
 
 // API holds the dependencies the handlers need.
 type API struct {
-	cfg    *config.Config
-	engine *engine.Engine
-	store  *store.Store
+	cfg     *config.Config
+	engine  *engine.Engine
+	store   *store.Store
+	arbiter *arbiter.Arbiter
 }
 
 // New builds the API.
-func New(cfg *config.Config, eng *engine.Engine, st *store.Store) *API {
-	return &API{cfg: cfg, engine: eng, store: st}
+func New(cfg *config.Config, eng *engine.Engine, st *store.Store, arb *arbiter.Arbiter) *API {
+	return &API{cfg: cfg, engine: eng, store: st, arbiter: arb}
 }
 
 // Handler returns the fully-routed http.Handler. Uses Go's method+wildcard
@@ -150,16 +152,25 @@ func (a *API) serveArtifact(w http.ResponseWriter, r *http.Request, jobID, name 
 
 func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 	type backendView struct {
-		Name  string `json:"name"`
-		Image string `json:"image"`
-		Verb  string `json:"verb"`
-		Evict string `json:"evict"`
+		Name      string `json:"name"`
+		Image     string `json:"image"`
+		Verb      string `json:"verb"`
+		Evict     string `json:"evict"`
+		Residency string `json:"residency"` // pinned | parked | stopped
+		Leases    int    `json:"leases"`    // in-flight jobs holding this backend
+		LastUsed  string `json:"last_used,omitempty"`
 	}
+	snap := a.arbiter.Snapshot()
 	var out []backendView
 	for name, svc := range a.cfg.Services {
-		out = append(out, backendView{
+		bv := backendView{
 			Name: name, Image: svc.Image, Verb: svc.Verb, Evict: string(svc.Evict),
-		})
+			Residency: "stopped", // default: never touched = not resident
+		}
+		if s, ok := snap[name]; ok {
+			bv.Residency, bv.Leases, bv.LastUsed = s.Residency, s.Leases, s.LastUsed
+		}
+		out = append(out, bv)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"backends": out})
 }

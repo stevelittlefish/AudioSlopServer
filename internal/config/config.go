@@ -50,6 +50,11 @@ type GPU struct {
 	Device       int  `toml:"device"`
 	VRAMBudgetMB int  `toml:"vram_budget_mb"`
 	ContextTaxMB int  `toml:"context_tax_mb"`
+	// MaxResident is how many backends may hold the GPU (be pinned) at once. The
+	// whole point of ASS is that this is small — default 1, "one model on the
+	// card." A big multi-GPU-ish future could raise it; the arbiter honors it as
+	// the pin capacity and evicts the LRU resident to stay under it.
+	MaxResident int `toml:"max_resident"`
 }
 
 // Server is where ASS itself listens. Nothing exotic.
@@ -141,6 +146,12 @@ func (c *Config) validate() error {
 	}
 	if c.Storage.ResultsDir == "" {
 		c.Storage.ResultsDir = "data/results"
+	}
+	if c.GPU.MaxResident == 0 {
+		c.GPU.MaxResident = 1 // one model on the card, as nature intended
+	}
+	if c.GPU.MaxResident < 0 {
+		return fmt.Errorf("gpu.max_resident %d is negative — that's fewer than no models", c.GPU.MaxResident)
 	}
 	if len(c.Services) == 0 {
 		return fmt.Errorf("no [services.*] configured — ASS with nothing to serve is just S")

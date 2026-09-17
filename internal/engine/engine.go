@@ -14,24 +14,25 @@ import (
 	"log"
 	"time"
 
+	"github.com/stevelittlefish/AudioSlopServer/internal/arbiter"
 	"github.com/stevelittlefish/AudioSlopServer/internal/backend"
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 	"github.com/stevelittlefish/AudioSlopServer/internal/results"
 	"github.com/stevelittlefish/AudioSlopServer/internal/store"
-	"github.com/stevelittlefish/AudioSlopServer/internal/supervisor"
 )
 
-// Supervisor is the slice of the supervisor the engine needs. An interface keeps
-// the engine testable without a real Docker daemon.
-type Supervisor interface {
-	EnsureUp(ctx context.Context, service string) error
+// Arbiter is the slice of the arbiter the engine needs: get a backend resident
+// (holding a lease so it can't be evicted mid-job) and know where to reach it.
+// An interface keeps the engine testable without a real Docker daemon.
+type Arbiter interface {
+	Acquire(ctx context.Context, service string) (func(), error)
 	BaseURL(service string) string
 }
 
-// Engine wires together the supervisor, the job store, and the results store.
+// Engine wires together the arbiter, the job store, and the results store.
 type Engine struct {
 	cfg     *config.Config
-	sup     Supervisor
+	arb     Arbiter
 	store   *store.Store
 	results *results.Store
 
@@ -43,10 +44,10 @@ type Engine struct {
 }
 
 // New builds an engine.
-func New(cfg *config.Config, sup Supervisor, st *store.Store, res *results.Store) *Engine {
+func New(cfg *config.Config, arb Arbiter, st *store.Store, res *results.Store) *Engine {
 	return &Engine{
 		cfg:          cfg,
-		sup:          sup,
+		arb:          arb,
 		store:        st,
 		results:      res,
 		jobTimeout:   30 * time.Minute,
@@ -78,13 +79,16 @@ func (e *Engine) process(jobID, service string, body []byte, contentType string)
 
 	svc := e.cfg.Services[service]
 
-	// 1. Make the backend resident and healthy. (Slice 2: this queues behind a
-	//    model swap; for now it just brings the one backend up.)
-	if err := e.sup.EnsureUp(ctx, service); err != nil {
-		e.fail(jobID, fmt.Sprintf("bringing up %s: %v", service, err))
+	// 1. Acquire the backend from the arbiter: make it resident on the GPU
+	//    (queuing behind any model swap) and hold a lease so it can't be evicted
+	//    until we've harvested the results. release drops the lease.
+	release, err := e.arb.Acquire(ctx, service)
+	if err != nil {
+		e.fail(jobID, fmt.Sprintf("acquiring %s: %v", service, err))
 		return
 	}
-	client := backend.New(e.sup.BaseURL(service))
+	defer release()
+	client := backend.New(e.arb.BaseURL(service))
 
 	// 2. Forward the work to the backend.
 	backendJobID, err := client.Submit(ctx, svc.Verb, bytes.NewReader(body), contentType)
@@ -175,5 +179,5 @@ func (e *Engine) fail(jobID, reason string) {
 	}
 }
 
-// compile-time check that the real supervisor satisfies our interface.
-var _ Supervisor = (*supervisor.Supervisor)(nil)
+// compile-time check that the real arbiter satisfies our interface.
+var _ Arbiter = (*arbiter.Arbiter)(nil)

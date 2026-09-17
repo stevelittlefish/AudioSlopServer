@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/stevelittlefish/AudioSlopServer/internal/api"
+	"github.com/stevelittlefish/AudioSlopServer/internal/arbiter"
 	"github.com/stevelittlefish/AudioSlopServer/internal/banner"
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 	"github.com/stevelittlefish/AudioSlopServer/internal/docker"
@@ -56,8 +57,9 @@ func main() {
 	log.Printf("talking to docker (API %s)", dcli.APIVersion())
 
 	sup := supervisor.New(dcli, cfg)
-	eng := engine.New(cfg, sup, st, res)
-	handler := api.New(cfg, eng, st).Handler()
+	arb := arbiter.New(sup, cfg)
+	eng := engine.New(cfg, arb, st, res)
+	handler := api.New(cfg, eng, st, arb).Handler()
 
 	for name, svc := range cfg.Services {
 		log.Printf("  service %-12s image=%s port=%d verb=%s evict=%s", name, svc.Image, svc.Port, svc.Verb, svc.Evict)

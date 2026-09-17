@@ -41,13 +41,35 @@ no GPU. Results survive backend eviction (verified). Not yet done in slice 1:
 persist backend job id across ASS restarts; stream large uploads to a temp file
 instead of buffering. Both noted for later.
 
-## Next — Slice 2: second backend + the real swap
+## Now — Slice 2: second backend + the real swap
 
-- [ ] Add a second backend (ACE-Step or forced-aligner)
-- [ ] Arbiter: enforce one-model-on-GPU, LRU eviction, one swap in flight
-- [ ] Implement `/park` + `/unpark` on a forked backend, wire up `evict = "park"`
-- [ ] VRAM/RAM budgeting: count pinned model + per-parked context tax
-- [ ] Prove a real evict-one / load-the-other swap under load
+- [x] Add a second backend — dev config already runs two mock backends
+      (`demucs` evict=park, `yue` evict=stop), enough to prove the swap without
+      standing up a real GPU service. A genuinely distinct one (ACE-Step/aligner)
+      is a "Later" onboarding task, not a Slice 2 blocker.
+- [x] Arbiter (`internal/arbiter`): enforces `max_resident` pins on the GPU
+      (default 1 = one model on the card), LRU victim selection, one swap in
+      flight (the GPU is the lock), and per-job **leases** so a running job can't
+      be evicted before its results are harvested. Race-clean, unit-tested.
+- [x] Wire `/park` + `/unpark`: `evict = "park"` demotes to CPU RAM (container
+      stays alive) and re-promotes via the fast unpark path; `evict = "stop"`
+      kills the container. Both exercised end to end.
+- [x] Prove a real evict-one / load-the-other swap — verified against the two
+      mock backends: demucs pinned → yue needed → demucs **parked** + yue pinned
+      → demucs needed → yue **stopped** + demucs **unparked** (not cold-started).
+      Container reality matched (`ass-yue` exited, `ass-demucs` running).
+
+**Slice 2 done** — the whole idea is proven: one GPU slot, two models taking
+turns, cheap park-swap and full stop-swap both working, jobs protected mid-flight
+by leases. `/v1/backends` now reports live residency + lease counts.
+
+Not yet done in slice 2 (deferred — needs data we don't have):
+- [ ] VRAM/RAM budgeting: count pinned model + per-parked context tax against the
+      budget. Needs real per-service weight sizes (see "Real weight-size
+      measurements" below); today the invariant is a simple pin *count*, not MB.
+- [ ] LRU across >1 resident: victim selection is real LRU code, but with
+      `max_resident = 1` there's only ever one victim. Exercise it once budgeting
+      allows a fit-set of 2+.
 
 ## Later — The rest
 
