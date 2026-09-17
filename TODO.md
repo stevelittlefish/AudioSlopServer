@@ -7,6 +7,12 @@ your life.
 (Also the closest thing Claude has to long-term memory across sessions, so keep
 it honest — if it's done, tick it; if it's abandoned, say so.)
 
+> ⚠️ **FIX NOW:** [`FIXNOW-cache-and-dockerfiles.md`](FIXNOW-cache-and-dockerfiles.md)
+> — a focused, self-contained work order to make caching uniform across all
+> services (per-service subdir + one shared HF token), fix the slow Docker builds
+> (deps-before-source), make SA3 report weight downloads, and lock ACE-Step's
+> defaults to the old compose. Do this before more feature work.
+
 ## Done — Spec
 
 - [x] Name the thing, state the problem, write the README pitch
