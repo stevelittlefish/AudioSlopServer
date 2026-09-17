@@ -4,3 +4,7 @@
 
 # Local overrides of the committed ass.toml, if you keep one.
 /ass.local.toml
+
+# ASS's own state: job database and harvested artifact bytes. Regenerated at
+# runtime, not versioned.
+/data/

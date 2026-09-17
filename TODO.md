@@ -28,12 +28,18 @@ Drive **stem-separator** through the whole lifecycle. No swapping yet.
 - [x] TOML config load (`[memory]`, `[gpu]`, `[services.*]`)
 - [x] Supervisor: start/stop a backend container via the Docker API
 - [x] Health-wait: poll backend `/health` until ready (with a timeout)
-- [ ] Unified async job API: `POST /v1/{service}/jobs`, `GET /v1/jobs/{id}`,
+- [x] Unified async job API: `POST /v1/{service}/jobs`, `GET /v1/jobs/{id}`,
       `GET /v1/jobs/{id}/result`, `GET /v1/backends`
-- [ ] sqlite job store (`modernc.org/sqlite`)
-- [ ] Reverse-proxy a real `/v1/separate` job through to stem-separator
-- [ ] Lazy lifecycle: bring backend up on first job, leave it pinned
-- [ ] End-to-end smoke test: submit audio, poll, download separated stems
+- [x] sqlite job store (`modernc.org/sqlite`) + artifacts table
+- [x] On-disk results store + harvest-on-completion (artifacts outlive the backend)
+- [x] Reverse-proxy a real job through to a backend (verified vs mock backend)
+- [x] Lazy lifecycle: bring backend up on first job, leave it pinned
+- [x] End-to-end smoke test: submit, poll, harvest, download multi-type artifacts
+
+**Slice 1 done** — full vertical path works end to end against the mock backend,
+no GPU. Results survive backend eviction (verified). Not yet done in slice 1:
+persist backend job id across ASS restarts; stream large uploads to a temp file
+instead of buffering. Both noted for later.
 
 ## Next — Slice 2: second backend + the real swap
 

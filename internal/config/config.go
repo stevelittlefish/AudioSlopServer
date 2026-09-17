@@ -15,7 +15,21 @@ type Config struct {
 	Memory   Memory             `toml:"memory"`
 	GPU      GPU                `toml:"gpu"`
 	Server   Server             `toml:"server"`
+	Storage  Storage            `toml:"storage"`
+	Docker   Docker             `toml:"docker"`
 	Services map[string]Service `toml:"services"`
+}
+
+// Storage is where ASS keeps its own state: the job database and the harvested
+// artifact bytes. Sensible defaults so a minimal config just works.
+type Storage struct {
+	DBPath     string `toml:"db_path"`
+	ResultsDir string `toml:"results_dir"`
+}
+
+// Docker is how ASS reaches the daemon. Empty socket = the platform default.
+type Docker struct {
+	Socket string `toml:"socket"`
 }
 
 // Memory is the global RAM budget. The big server keeps everything parked; the
@@ -121,6 +135,12 @@ func Load(path string) (*Config, error) {
 func (c *Config) validate() error {
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":8080" // a sensible default beats a mysterious :0
+	}
+	if c.Storage.DBPath == "" {
+		c.Storage.DBPath = "data/ass.db"
+	}
+	if c.Storage.ResultsDir == "" {
+		c.Storage.ResultsDir = "data/results"
 	}
 	if len(c.Services) == 0 {
 		return fmt.Errorf("no [services.*] configured — ASS with nothing to serve is just S")

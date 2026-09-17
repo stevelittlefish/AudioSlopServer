@@ -1,0 +1,32 @@
+# Dev config: drives the mock backend (ass-mockbackend:local) instead of a real
+# GPU service, so the whole orchestrator runs on a machine with no graphics card.
+# Build the image first: ./scripts/build-mockbackend.sh
+#
+#   ./run.sh -config ass.dev.toml
+
+[gpu]
+enabled = false          # this dev box has no GPU; run backends on CPU
+
+[server]
+addr = ":8080"
+
+[storage]
+db_path     = "data/dev/ass.db"
+results_dir = "data/dev/results"
+
+# Two fake backends so we can exercise multi-service routing (and, in Slice 2,
+# swapping between them).
+
+[services.demucs]
+image = "ass-mockbackend:local"
+port  = 5336
+verb  = "separate"        # mock returns vocals.wav + no_vocals.wav
+evict = "park"
+env   = { JOB_MS = "300" }
+
+[services.yue]
+image = "ass-mockbackend:local"
+port  = 5340
+verb  = "generate"        # mock returns audio.flac + score.abc
+evict = "stop"
+env   = { JOB_MS = "300" }

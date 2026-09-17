@@ -19,13 +19,62 @@ import (
 	"time"
 )
 
-// job is one pretend unit of work that "runs" for jobDuration and then succeeds.
+// artifact mirrors the ASS artifact model: a named, typed output file.
+type artifact struct {
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	ContentType string `json:"content_type"`
+	Bytes       int64  `json:"bytes"`
+}
+
+// job is one pretend unit of work that "runs" for jobDuration and then succeeds,
+// producing a set of artifacts appropriate to its verb.
 type job struct {
-	ID         string    `json:"job_id"`
-	State      string    `json:"state"` // queued -> running -> succeeded
-	Verb       string    `json:"verb"`
-	CreatedAt  time.Time `json:"created_at"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
+	ID         string     `json:"job_id"`
+	State      string     `json:"state"` // queued -> running -> succeeded
+	Verb       string     `json:"verb"`
+	CreatedAt  time.Time  `json:"created_at"`
+	FinishedAt time.Time  `json:"finished_at,omitempty"`
+	Artifacts  []artifact `json:"artifacts"`
+}
+
+// artifactsForVerb fakes plausible outputs so ASS's harvest path sees the real
+// shape: DEMUCS-like multi-stem, YuE-like mixed audio+score, or a lone file.
+func artifactsForVerb(verb string) []artifact {
+	switch verb {
+	case "separate":
+		return []artifact{
+			{Name: "vocals.wav", Kind: "stem", ContentType: "audio/wav", Bytes: int64(len(silentWAV()))},
+			{Name: "no_vocals.wav", Kind: "stem", ContentType: "audio/wav", Bytes: int64(len(silentWAV()))},
+		}
+	case "generate":
+		return []artifact{
+			{Name: "audio.flac", Kind: "audio", ContentType: "audio/flac", Bytes: int64(len(silentWAV()))},
+			{Name: "score.abc", Kind: "score", ContentType: "text/vnd.abc", Bytes: int64(len(fakeABC()))},
+		}
+	default:
+		return []artifact{
+			{Name: "output.wav", Kind: "audio", ContentType: "audio/wav", Bytes: int64(len(silentWAV()))},
+		}
+	}
+}
+
+// bytesForArtifact returns the pretend contents of a named artifact.
+func bytesForArtifact(name string) ([]byte, string, bool) {
+	switch {
+	case strings.HasSuffix(name, ".abc"):
+		return fakeABC(), "text/vnd.abc", true
+	case strings.HasSuffix(name, ".wav"), strings.HasSuffix(name, ".flac"):
+		return silentWAV(), "audio/wav", true // it's really a WAV; close enough for a dummy
+	default:
+		return nil, "", false
+	}
+}
+
+// fakeABC is a tiny valid-ish ABC score, so the "not everything is audio" path
+// carries real non-audio bytes.
+func fakeABC() []byte {
+	return []byte("X:1\nT:Slop in C\nM:4/4\nK:C\nCDEF GABc|\n")
 }
 
 var (
@@ -97,6 +146,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		j.State = "succeeded"
 		j.FinishedAt = time.Now()
+		j.Artifacts = artifactsForVerb(j.Verb) // outputs only exist once done
 		mu.Unlock()
 	}()
 
@@ -104,13 +154,13 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleJob(w http.ResponseWriter, r *http.Request) {
-	// Path is /v1/jobs/{id} or /v1/jobs/{id}/result.
+	// Path is /v1/jobs/{id} or /v1/jobs/{id}/result/{name}.
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
 	id := rest
-	wantResult := false
+	var tail string // everything after the id, e.g. "result/vocals.wav"
 	if i := strings.Index(rest, "/"); i >= 0 {
 		id = rest[:i]
-		wantResult = strings.TrimPrefix(rest[i:], "/") == "result"
+		tail = strings.TrimPrefix(rest[i:], "/")
 	}
 
 	mu.Lock()
@@ -121,7 +171,8 @@ func handleJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if wantResult {
+	// Artifact download: /v1/jobs/{id}/result/{name}
+	if name, isResult := strings.CutPrefix(tail, "result/"); isResult {
 		mu.Lock()
 		done := j.State == "succeeded"
 		mu.Unlock()
@@ -129,13 +180,18 @@ func handleJob(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "job not finished", "state": j.State})
 			return
 		}
-		// Hand back a tiny but valid WAV so the proxy path moves real bytes.
-		w.Header().Set("Content-Type", "audio/wav")
+		body, ctype, ok := bytesForArtifact(name)
+		if !ok {
+			http.Error(w, "no such artifact", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", ctype)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(silentWAV())
+		_, _ = w.Write(body)
 		return
 	}
 
+	// Otherwise: job status (including the artifact list once succeeded).
 	mu.Lock()
 	defer mu.Unlock()
 	writeJSON(w, http.StatusOK, j)
