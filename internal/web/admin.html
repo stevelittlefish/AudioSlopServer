@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en" data-page="admin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASS · Admin</title>
+<style>
+  :root {
+    --bg:#0b0d10; --bg2:#12151a; --panel:#151920; --panel2:#1b2028;
+    --line:#242b35; --line2:#2f3945;
+    --ink:#e7ecf3; --ink-dim:#8b97a7; --ink-faint:#5b6675;
+    --accent:#5ee0b0; --accent-dim:#2b6b57;
+    --pinned:#5ee0b0; --parked:#f2c14e; --stopped:#5b6675;
+    --danger:#ff6b6b; --danger-dim:#5a2626;
+    --radius:14px; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; }
+  body {
+    background:
+      radial-gradient(900px 500px at 85% -10%, #16211d 0%, transparent 60%),
+      radial-gradient(700px 500px at -5% 0%, #1a1720 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; min-height:100vh; line-height:1.45;
+  }
+  a { color:var(--accent); text-decoration:none; }
+
+  header.top {
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+    padding:22px 28px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);
+  }
+  .brand { display:flex; align-items:baseline; gap:12px; }
+  .brand pre {
+    margin:0; font-family:var(--mono); font-size:11px; line-height:1.05;
+    color:var(--accent); text-shadow:0 0 18px rgba(94,224,176,.35); user-select:none;
+  }
+  .brand .sub { color:var(--ink-dim); font-size:13px; letter-spacing:.02em; }
+  .brand .sub b { color:var(--ink); font-weight:600; }
+  .spacer { flex:1; }
+
+  .liveblip { display:inline-flex; align-items:center; gap:8px; color:var(--ink-faint); font-size:12px; font-family:var(--mono); }
+  .liveblip .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  main { padding:26px 28px 60px; max-width:1200px; margin:0 auto; }
+
+  .bar { display:flex; align-items:center; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+  .bar h1 { font-size:15px; font-weight:600; margin:0; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-dim); }
+  .counts { display:flex; gap:8px; }
+  .pill { font-family:var(--mono); font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--line2); color:var(--ink-dim); }
+  .pill b { color:var(--ink); }
+
+  button {
+    font-family:var(--sans); font-size:13px; font-weight:500; cursor:pointer;
+    border:1px solid var(--line2); background:var(--panel2); color:var(--ink);
+    padding:7px 13px; border-radius:9px; transition:.12s ease; letter-spacing:.01em;
+  }
+  button:hover:not(:disabled) { border-color:var(--accent-dim); background:#20262f; }
+  button:active:not(:disabled) { transform:translateY(1px); }
+  button:disabled { opacity:.32; cursor:not-allowed; }
+  button.danger { border-color:var(--danger-dim); color:#ffb3b3; }
+  button.danger:hover:not(:disabled) { background:var(--danger-dim); border-color:var(--danger); color:#fff; }
+  button.ghost { background:transparent; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+
+  .card {
+    background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 18px 15px; position:relative; overflow:hidden;
+    transition:border-color .15s ease;
+  }
+  .card::before {
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:var(--state-c,var(--stopped)); opacity:.9;
+  }
+  .card[data-res="pinned"] { --state-c:var(--pinned); border-color:#1f3a31; }
+  .card[data-res="parked"] { --state-c:var(--parked); }
+  .card[data-res="stopped"]{ --state-c:var(--stopped); }
+
+  .card .head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .card .name { font-size:17px; font-weight:600; letter-spacing:.01em; }
+  .card .verb { font-family:var(--mono); font-size:11px; color:var(--ink-faint); border:1px solid var(--line2); padding:1px 7px; border-radius:6px; }
+
+  .badge { margin-left:auto; display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--state-c); }
+  .badge .dot { width:9px; height:9px; border-radius:50%; background:var(--state-c); box-shadow:0 0 10px var(--state-c); }
+  .card[data-res="stopped"] .badge .dot { box-shadow:none; }
+
+  .meta { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-bottom:16px; font-size:12.5px; }
+  .meta .k { color:var(--ink-faint); }
+  .meta .v { color:var(--ink-dim); font-family:var(--mono); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .meta .v.leased { color:var(--parked); }
+
+  .actions { display:flex; gap:8px; }
+  .actions button { flex:1; }
+
+  .empty { color:var(--ink-faint); font-family:var(--mono); font-size:13px; padding:40px 0; text-align:center; }
+
+  .toast {
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--panel2); border:1px solid var(--line2); color:var(--ink);
+    padding:11px 18px; border-radius:10px; font-size:13px; font-family:var(--mono);
+    opacity:0; pointer-events:none; transition:.2s ease; max-width:90vw; box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.err { border-color:var(--danger); color:#ffb3b3; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <pre> _____ _____ _____
+|  _  |  ___|  ___|
+| |_| \___ \\___ \
+|__/  |_____|_____|</pre>
+    <span class="sub"><b>Audio Slop Server</b> · admin console</span>
+  </div>
+  <span class="spacer"></span>
+  <span class="liveblip"><span class="dot"></span><span id="live">connecting…</span></span>
+</header>
+
+<main>
+  <div class="bar">
+    <h1>Backends</h1>
+    <div class="counts" id="counts"></div>
+    <span class="spacer"></span>
+    <button class="ghost" id="refresh">↻ Refresh</button>
+    <button class="danger" id="unloadall">⏻ Unload all</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>No backends configured.</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const POLL_MS = 3000;
+let inFlight = false;   // a backend action is running — pause auto-refresh churn
+let timer = null;
+
+function relTime(iso) {
+  if (!iso) return "never";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return iso;
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return s + "s ago";
+  const m = Math.round(s / 60); if (m < 60) return m + "m ago";
+  const h = Math.round(m / 60); if (h < 24) return h + "h ago";
+  return Math.round(h / 24) + "d ago";
+}
+
+function toast(msg, isErr) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.toggle("err", !!isErr);
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 3200);
+}
+
+function shortImage(img) {
+  if (!img) return "—";
+  return img.split("/").pop();      // drop registry/owner, keep repo:tag
+}
+
+function card(b) {
+  const canPark   = b.evict === "park" && b.residency === "pinned";
+  const canUnpark = b.residency === "parked";
+  const canStop   = b.residency !== "stopped";
+  const el = document.createElement("div");
+  el.className = "card";
+  el.dataset.res = b.residency;
+  el.innerHTML = `
+    <div class="head">
+      <span class="name"></span>
+      <span class="verb"></span>
+      <span class="badge"><span class="dot"></span><span class="rtext"></span></span>
+    </div>
+    <div class="meta">
+      <span class="k">image</span><span class="v img"></span>
+      <span class="k">leases</span><span class="v leasev"></span>
+      <span class="k">evict</span><span class="v evictv"></span>
+      <span class="k">last used</span><span class="v lastv"></span>
+    </div>
+    <div class="actions">
+      <button class="act-park">Park</button>
+      <button class="act-unpark">Unpark</button>
+      <button class="act-stop danger">Stop</button>
+    </div>`;
+  el.querySelector(".name").textContent = b.name;
+  el.querySelector(".verb").textContent = b.verb || "—";
+  el.querySelector(".rtext").textContent = b.residency;
+  el.querySelector(".img").textContent = shortImage(b.image);
+  el.querySelector(".img").title = b.image || "";
+  const lv = el.querySelector(".leasev");
+  lv.textContent = b.leases;
+  if (b.leases > 0) lv.classList.add("leased");
+  el.querySelector(".evictv").textContent = b.evict || "stop";
+  el.querySelector(".lastv").textContent = relTime(b.last_used);
+
+  const pk = el.querySelector(".act-park");
+  const up = el.querySelector(".act-unpark");
+  const sp = el.querySelector(".act-stop");
+  pk.disabled = !canPark;   pk.onclick = () => act(b.name, "park");
+  up.disabled = !canUnpark; up.onclick = () => act(b.name, "unpark");
+  sp.disabled = !canStop;   sp.onclick = () => act(b.name, "stop");
+  return el;
+}
+
+function renderCounts(list) {
+  const c = { pinned:0, parked:0, stopped:0 };
+  list.forEach(b => c[b.residency] = (c[b.residency]||0)+1);
+  $("#counts").innerHTML =
+    `<span class="pill">pinned <b>${c.pinned}</b></span>` +
+    `<span class="pill">parked <b>${c.parked}</b></span>` +
+    `<span class="pill">stopped <b>${c.stopped}</b></span>`;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/v1/backends", { headers:{accept:"application/json"} });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    const list = (data.backends || []).sort((a,b) => a.name.localeCompare(b.name));
+    const grid = $("#grid");
+    grid.innerHTML = "";
+    list.forEach(b => grid.appendChild(card(b)));
+    renderCounts(list);
+    $("#empty").hidden = list.length > 0;
+    $("#live").textContent = "live · " + new Date().toLocaleTimeString();
+  } catch (e) {
+    $("#live").textContent = "offline";
+    toast("Can't reach ASS: " + e.message, true);
+  }
+}
+
+async function act(service, action) {
+  if (inFlight) return;
+  inFlight = true;
+  document.querySelectorAll("button").forEach(b => b.disabled = true);
+  try {
+    const r = await fetch(`/v1/backends/${encodeURIComponent(service)}/${action}`, { method:"POST" });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
+    toast(`${service}: ${action} → ${body.residency || "ok"}`);
+  } catch (e) {
+    toast(`${service} ${action} failed: ${e.message}`, true);
+  } finally {
+    inFlight = false;
+    await refresh();
+  }
+}
+
+async function unloadAll() {
+  if (inFlight) return;
+  inFlight = true;
+  document.querySelectorAll("button").forEach(b => b.disabled = true);
+  try {
+    const r = await fetch("/v1/backends/unload-all", { method:"POST" });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
+    const un = (body.unloaded||[]).length, sk = (body.skipped||[]).length;
+    let msg = `Unloaded ${un} backend${un===1?"":"s"}`;
+    if (sk) msg += ` · ${sk} busy, left alone`;
+    toast(msg);
+  } catch (e) {
+    toast("Unload all failed: " + e.message, true);
+  } finally {
+    inFlight = false;
+    await refresh();
+  }
+}
+
+function loop() {
+  clearTimeout(timer);
+  const tick = async () => { if (!inFlight) await refresh(); timer = setTimeout(tick, POLL_MS); };
+  tick();
+}
+
+$("#refresh").onclick = refresh;
+$("#unloadall").onclick = unloadAll;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+loop();
+</script>
+</body>
+</html>

@@ -189,13 +189,24 @@ curl today; the admin panel (Part B) just needs to render + POST to them.
 
 ### Part B — the admin panel
 
-- [ ] `GET /admin` — server-rendered page listing every backend from the same
-      data as `GET /v1/backends`: state (pinned/parked/sleeping/stopped), queue
-      depth, last-used, VRAM/RAM, lease count.
-- [ ] Buttons wired to the Part A endpoints: park / unpark / stop per backend,
-      plus the **unload-all** button. Vanilla JS POSTs then refreshes the row.
-- [ ] Auto-refresh the status (poll `/v1/backends` every few seconds; SSE later
-      if it's worth it — poll is fine to start).
+- [x] `GET /admin` — dark, self-contained console (`internal/web/admin.html`,
+      embedded + served by `internal/web/web.go`). Cards per backend with a
+      coloured residency badge (pinned green / parked amber / stopped grey),
+      name, verb, image, lease count, evict policy, last-used. `GET /{$}`
+      redirects to `/admin`. Gated behind `[web] enabled` alongside the operator
+      endpoints. (VRAM/RAM columns wait on the deferred budgeting work.)
+- [x] Buttons wired to the Part A endpoints: park / unpark / stop per backend
+      (auto-disabled when N/A for the current state), plus the **unload-all**
+      button. Vanilla JS POSTs, toasts the result, then refreshes.
+- [x] Auto-refresh: polls `/v1/backends` every 3s (pauses during an action and
+      while the tab's hidden; refreshes on focus). SSE is a later nicety.
+
+**Part B done** — verified end to end against the two mock backends: dashboard
+serves, `/` redirects, submit→pinned shows up, park/unpark/stop and unload-all
+all work from the API the buttons call, and the evict=stop→park 400 surfaces as
+a toast. First working design; **6 alternate designs next** for the user to pick.
+(Couldn't self-screenshot — Chrome extension wasn't connected — but the user is
+viewing it live.)
 
 ### Part C — the per-service test page
 
