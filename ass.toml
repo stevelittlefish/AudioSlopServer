@@ -130,3 +130,31 @@ env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api", HF_HOME = "/cache/a
 # (HF_TOKEN_PATH). No bespoke /app/checkpoints mount — nothing durable lands outside
 # /cache.
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/acestep:/app/outputs"]
+
+[services.yue]
+# YuE2-3B — text-to-music: style + lyrics -> an editable ABC score -> semantic
+# tokens -> a song. Forked + conformed to the ASS contract (artifacts[] +
+# /result/{name} + /park + /unpark) in stevelittlefish/YuE-inference-server;
+# published to GHCR by that repo's container.yml on a v* tag. Pull with
+# ./pull-services.sh.
+image = "ghcr.io/stevelittlefish/yue-inference-server:latest"
+port  = 5340            # YuE. ASS maps host:port -> container:port on the same
+                        # number, so the container must listen here too:
+                        # YUE_API_PORT below is pinned to match.
+verb  = "generate"      # POST /v1/generate; returns audio.flac + score.abc + the
+                        # lyrics + result/config metadata as a mixed-kind artifacts[]
+evict = "stop"          # START HERE. YuE2-3B is heavy; the parked context tax may
+                        # not pay off vs a cold reload. /park + /unpark ARE
+                        # implemented — flip to "park" once VRAM/RAM is measured on
+                        # the box (docs/measurements.md) and the numbers justify it.
+ram_reserve_mb = 10000  # rough parked-in-RAM guess for the 3B model; UNMEASURED —
+                        # refine on the box before trusting it.
+idle_ttl = "0"          # never reclaim parked RAM on the big server
+shm_size_mb = 8192      # generation wants elbow room
+# This backend reads YUE_API_PORT, not the generic PORT ASS injects, so pin it.
+# HF_HOME/TORCH_HOME point at THIS service's own /cache/yue subdir (its weights
+# come from the ordinary HF hub cache, unlike ACE-Step's flat checkpoints dir);
+# HF_TOKEN_PATH is the one shared token every backend reads. YuE2's default torch
+# backend is deliberate — vllm would greedily pin VRAM and fight park/share.
+env = { YUE_API_PORT = "5340", HF_HOME = "/cache/yue/huggingface", TORCH_HOME = "/cache/yue/torch", HF_TOKEN_PATH = "/cache/hf-token" }
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/yue:/app/outputs"]
