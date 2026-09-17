@@ -31,6 +31,9 @@ PUBLIC_REPOS=(
   "git@github.com:multimodal-art-projection/YuE.git"
   # DEMUCS stem-separation server.
   "git@github.com:stevelittlefish/stem-separator.git"
+  # Not a backend — a pattern reference. Its GoReleaser + GitHub Actions setup is
+  # the model we copy for building/versioning/publishing our own images.
+  "git@github.com:stevelittlefish/llm_proxy.git"
 )
 
 # host:port of the private LAN git server. If we can't open a socket to this,
