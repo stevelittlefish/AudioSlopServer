@@ -92,12 +92,16 @@ of that is done.
       for real deployment though: `gpu.enabled = true` (was defaulting false!),
       pinned `SEP_PORT`/`SEP_MODEL` via per-service env (the backend reads
       SEP_PORT, not the generic PORT ASS injects), and mounted the weight cache.
-- [ ] **Real end-to-end on the GPU box**: build `stem-separation:local` there,
-      `./run.sh -config ass.toml`, submit a real song, confirm harvested stems +
-      that /park actually frees VRAM (`nvidia-smi`) and /unpark restores it. This
-      is the one step neither dev machine can do (no GPU). Verify the `.model`
-      attribute assumption in `separation.py:park_model` holds for the installed
-      demucs version.
+- [ ] **Real end-to-end on the GPU box** — full procedure in
+      [docs/deploy.md](docs/deploy.md). Pure-docker: `docker compose up` runs ASS
+      (host network + docker socket), backend image built locally (no registry),
+      ASS starts the demucs container on demand. Submit a real song, confirm
+      harvested stems, then hit the backend's `/park` directly and watch
+      `nvidia-smi` free VRAM (validates the CUDA park code + the `.model`
+      assumption in `separation.py:park_model`, and gives us the real parked
+      context tax for measurements.md). The one step neither dev box can do.
+      ASS-in-docker itself is verified locally (builds, boots, reaches the
+      daemon); only the GPU + torch path is untested.
 
 ## Later — The rest
 

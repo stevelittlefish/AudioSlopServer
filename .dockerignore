@@ -1,0 +1,9 @@
+# Keep the build context small and the image clean. The big offender is
+# references/ — gitignored clones of every backend repo, potentially many GB;
+# COPYing that into the build would be slow and pointless.
+.git
+references/
+data/
+*.log
+# The scratch outputs and DBs never belong in an image.
+**/ass.db

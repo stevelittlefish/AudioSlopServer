@@ -1,0 +1,36 @@
+# Runs ASS — and ONLY ASS. This is the one long-lived service you start yourself.
+#
+# The backends are deliberately NOT here: ASS starts and stops them itself, one at
+# a time, on demand (that's the whole point — one model on the GPU). Putting the
+# backends in this file would bring them all up at once and fight ASS for the
+# card. Their own repos' compose files are now just image-builders; build the
+# image once, and ASS owns the container lifecycle from there.
+#
+#   docker compose up --build -d      # start ASS
+#   docker compose logs -f ass        # watch it work
+#
+# Prereqs on the host: the backend images built locally (e.g. stem-separation:local),
+# and nvidia-container-toolkit installed (the BACKENDS get --gpus; ASS never does).
+
+services:
+  ass:
+    build:
+      context: .
+      dockerfile: cmd/ass/Dockerfile
+    image: ass:local
+    container_name: ass
+    # Host networking is the trick that makes the pure-docker setup work today:
+    # ASS creates backend containers that publish their ports to the host, and on
+    # the host network ASS reaches them at localhost:<port> — no shared-network,
+    # container-name addressing needed (that's a later refinement). ASS's own
+    # server.addr (:8080) binds directly on the host.
+    network_mode: host
+    volumes:
+      # The one privilege ASS needs: talk to the host daemon to run sibling
+      # backend containers. ASS is otherwise unprivileged.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Config in, read-only. Edit ass.toml on the host, restart to apply.
+      - ./ass.toml:/app/ass.toml:ro
+      # ASS's own state: the job DB and harvested artifact bytes. Survives restarts.
+      - ./data:/app/data
+    restart: unless-stopped
