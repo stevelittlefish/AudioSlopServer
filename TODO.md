@@ -262,6 +262,34 @@ after. Do Part A first — it's independently useful and unblocks B and C.
       here as the anchor for any follow-up (click-to-zoom / lightbox, sizing
       controls) if we want it.
 
+### Artifact lifetime & cleanup
+
+Today **nothing is ever cleaned up**. Harvested artifacts live forever in ASS's
+results store (`<results_dir>/<job_id>/<name>` + sqlite `artifacts` rows) with no
+TTL/prune/delete anywhere in the code, AND a duplicate copy accumulates on each
+backend's bind-mounted `/app/outputs` (`/srv/ass/outputs/<svc>`) because ASS
+harvests over HTTP but never tells the backend to delete. On a busy box that's
+unbounded disk growth in two places. (Inputs are fine — backends unlink their
+temp upload after the job; ASS buffers uploads in memory, not disk.)
+
+- [ ] **Retention policy for the ASS results store.** Age- and/or size-based
+      prune of `<results_dir>` that also deletes the matching sqlite rows (jobs +
+      artifacts). Config it under a `[storage]` knob (e.g. `results_ttl`,
+      `results_max_gb`); off by default (the big server keeps everything), on for
+      constrained boxes — mirrors the `idle_ttl` philosophy. One-dir-per-job
+      layout makes each delete a single `RemoveAll`.
+- [ ] **`DELETE /v1/jobs/{id}` on ASS** — no way to remove a job/its artifacts
+      today. Add the endpoint (RemoveAll the job dir + delete the sqlite rows),
+      and a delete button on the admin/test pages. Lease-safe: refuse (or defer)
+      while a job is in flight, same discipline as the operator controls.
+- [ ] **Kill the duplicate backend-side copy.** ASS never calls the backend's
+      `DELETE /v1/jobs/{id}`, so results pile up on the mounted outputs dir too.
+      Either (a) have the engine call the backend's DELETE right after a
+      successful harvest, or (b) drop the `/app/outputs` bind-mount entirely —
+      per CLAUDE.md it's optional since ASS reads results over HTTP, so (b) is the
+      simpler fix and removes the orphaned-files-after-`evict=stop` problem. Lean
+      (b), keep (a) as the option if a backend needs scratch space on disk.
+
 ### Backends & orchestration
 
 - [ ] Onboard remaining backends (YuE, Whisper, aligner)
