@@ -9,8 +9,8 @@ machines — this file is the input to the eventual concrete budget defaults.
 
 | Host | GPU | VRAM | System RAM | Notes |
 |---|---|---|---|---|
-| `ai.lemon.com` | (big box) | — | 128GB | The roomy server; keeps things parked forever. |
-| `ai2.lemon.com` | RTX 4080 | 16GB | **16GB** | Fast, but RAM-constrained — the "peasant-ish" case. Here **system RAM is the binding constraint, not VRAM.** |
+| `ai.lemon.com` | (big box) | — | 128GB | **The test & deployment target.** The roomy server; keeps things parked forever. This is where ASS actually runs. |
+| `ai2.lemon.com` | RTX 4080 | 16GB | **16GB** | *Not* our test box — just where the demucs numbers below happened to get measured. Fast, but RAM-constrained ("peasant-ish"): here **system RAM binds before VRAM.** Useful as the constrained-box reference. |
 
 ### The VRAM baseline (~0.39GB with everything off)
 
