@@ -44,3 +44,22 @@ env     = { SEP_PORT = "5336", SEP_MODEL = "htdemucs_ft" }
 # container path /cache matches the image's HF_HOME/TORCH_HOME. Outputs stay
 # per-service (job scratch; ASS harvests results over HTTP anyway).
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/demucs:/app/outputs"]
+
+[services.stableaudio]
+# Stable Audio 3 Medium — text-to-audio generation. Forked + conformed to the
+# ASS contract (artifacts[] + /result/{name} + /park + /unpark); published to
+# GHCR by stable-audio-3-docker's release workflow. Pull with ./pull-services.sh.
+image = "ghcr.io/stevelittlefish/stable-audio-3-docker:latest"
+port  = 5335            # the image's run_api.py defaults to --port 5335
+verb  = "generate"      # POST /v1/generate; returns audio.wav (+ spectrogram)
+evict = "park"          # cold start reloads a multi-GB checkpoint + flash-attn,
+                        # so the fast park/unpark swap earns its keep here. The
+                        # peasant box (tight RAM) should switch this to "stop".
+ram_reserve_mb = 8000   # rough parked-in-RAM cost of the medium model; UNMEASURED
+                        # — refine once we run it on the box (see docs/measurements.md).
+idle_ttl = "0"          # never reclaim parked RAM on the big server
+shm_size_mb = 8192      # SA3 wants elbow room (its compose sets 8gb)
+# The gated weights (stabilityai/stable-audio-3-medium) authenticate via the HF
+# token in the shared cache (/srv/ass/cache/huggingface/token) — never in this
+# committed file. The image's CMD already loads `--model medium`.
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs"]

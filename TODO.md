@@ -106,9 +106,46 @@ of that is done.
       `ass.toml` now sets `context_tax_mb = 400` (measured + headroom); full
       numbers in [docs/measurements.md](docs/measurements.md).
 
+## Now — Second real backend: Stable Audio 3 (generation)
+
+Onboarding SA3 the same way stem-separator was conformed. The heavy torch path
+can only be tested on the GPU box (`ai.lemon.com`); everything short of that is
+done.
+
+- [x] Assess the gap: `stable-audio-3-docker` was in the old pre-conform shape
+      (same as stem-separator started) — it had /health, /v1/model, /v1/generate,
+      async submit→poll, but returned `outputs[]` with `audio_url`/`spectrogram_url`
+      and downloaded via `/v1/jobs/{id}/audio?index=N` + `/spectrogram`. Missing:
+      the `artifacts[]` shape, `/result/{name}`, `/park` + `/unpark`, `/v1/info`.
+- [x] Conform the service (committed+pushed to stevelittlefish/stable-audio-3-docker,
+      no back-compat aliases): `outputs[]`→`artifacts[]` with {name, kind,
+      content_type, bytes} (one audio clip per batch element + its spectrogram PNG,
+      named by filename); `/audio`+`/spectrogram`→`/result/{name}`;
+      `/v1/model`→`/v1/info` (+ `parked`); `parked` in /health; POST /park +
+      /unpark that move the whole model (DiT + pretransform + conditioner) CPU↔GPU
+      with a mandatory empty_cache(), serialized against a running generation by a
+      GPU lock. `TORCH_HOME=/cache/torch` added for the shared-cache convention.
+- [x] Add the release CI: `.github/workflows/release.yml` + `make_release.sh`
+      (copied from stem-separator) publishing `ghcr.io/stevelittlefish/stable-audio-3-docker`
+      on a `v*` tag, same tag scheme (vX.Y.Z / vX.Y / vX / latest). Frees runner
+      disk first (the CUDA+torch+flash-attn image is big); no HF token needed at
+      build time (weights fetched at runtime into the shared cache).
+- [x] ASS side: added `[services.stableaudio]` to `ass.toml` (port 5335, verb
+      `generate`, evict `park`, shm 8gb, shared /cache mount). Zero ASS code
+      changes — it already expects `artifacts[]` + `/result/{name}`.
+- [ ] **Cut the first release** on stable-audio-3-docker (`./make_release.sh
+      v0.1.0 "..."`) so `ghcr.io/.../stable-audio-3-docker:latest` exists to pull.
+- [ ] **Real end-to-end on the GPU box** — pull the image, run ASS, submit a
+      generate job, verify cold-start → generate → harvest → `succeeded` with the
+      right `artifacts[]`, and that `/park`+`/unpark` return clean 200s on real
+      CUDA (confirm the `model.model.to(...)` park assumption holds, as we did for
+      demucs's `.model`).
+- [ ] **Measure** SA3's resident + parked VRAM and RAM footprint → replace the
+      guessed `ram_reserve_mb = 8000` with real numbers (docs/measurements.md).
+
 ## Later — The rest
 
-- [ ] Onboard remaining backends (Stable Audio 3, YuE, Whisper, aligner)
+- [ ] Onboard remaining backends (YuE, Whisper, aligner)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only
 - [ ] Auth (backends already support an API key; decide if ASS fronts it)
