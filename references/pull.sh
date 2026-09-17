@@ -15,12 +15,13 @@
 set -uo pipefail
 
 # Each entry is either "url" or "url|dir". The optional |dir overrides the
-# checkout directory, which matters when two repos share a basename — our
-# ACE-Step fork and its upstream are both literally named ACE-Step-1.5, and
-# without distinct dirs the second would silently pull into the first's clone.
+# checkout directory, which matters when we want a clone named something other
+# than the remote's basename — e.g. pinning upstream ACE-Step to a distinct dir
+# so it never pulls into our fork's clone.
 PUBLIC_REPOS=(
-  # ACE-Step 1.5 — our server fork, and the upstream it forked from.
-  "git@github.com:stevelittlefish/ACE-Step-1.5.git"
+  # ACE-Step 1.5 — our server fork (renamed to ACE-Step-1.5-inference-server),
+  # and the upstream it forked from.
+  "git@github.com:stevelittlefish/ACE-Step-1.5-inference-server.git"
   "git@github.com:ace-step/ACE-Step-1.5.git|ACE-Step-1.5-upstream"
   # Karaoke: word-level forced alignment.
   "git@github.com:stevelittlefish/forced-aligner.git"

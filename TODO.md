@@ -149,6 +149,115 @@ done.
       (docs/measurements.md). Needs per-process `nvidia-smi` on the box across an
       unpark→park (as done for demucs); can't be read over HTTP from a dev box.
 
+## Now — Third real backend: ACE-Step 1.5 XL (generation)
+
+Onboarding ACE-Step the same way stem-separator and SA3 were conformed. Fork is
+`stevelittlefish/ACE-Step-1.5-inference-server` (renamed from `ACE-Step-1.5`;
+cloned in `references/ACE-Step-1.5-inference-server`). Heavy torch path
+tests only on the GPU box.
+
+**Two things make this the biggest conform yet:**
+
+1. **It's SlopBC's live workhorse.** SlopBC already talks to ACE-Step directly
+   (`references/SlopBC/internal/engine`, via `/release_task` + `/query_result`)
+   and has reverse-engineered the whole thing — see
+   `references/SlopBC/docs/ace-step.md` (READ IT; it's gold: model zoo, the
+   determinism recipe, `thinking`/LM gating, cover/repaint/analyze, audio_codes,
+   the multipart source-audio path). Ripping the old API (user: "we don't need to
+   keep it") means SlopBC must move to fronting ACE-Step **through ASS** — a
+   coordination point, not a blocker, but decide the cutover before deleting
+   routes.
+2. **It's not a single-output text2music box like SA3.** It has multiple
+   `task_type`s (text2music, cover, repaint, extract, analyze), a
+   **multipart source-audio** path (`ctx_audio`/`ref_audio` for cover/repaint),
+   and rich structured output beyond the WAV: `audio_codes` (the 5Hz blueprint),
+   `metas`, `cot_caption`/`cot_lyrics`, `seed_value`. The ASS `generate` envelope
+   covers text2music cleanly; the advanced flows need the artifact + params
+   mapping thought through (below). Training is **out of scope** — inference only
+   (user: "not sure it ever will be" a concern); we don't wrap `/v1/training/*`,
+   `/v1/dataset/*`, LoRA-train, or the OpenRouter `/v1/chat/completions` adapter.
+
+### The gap (assessed 2026-09-17, code-checked against the fork)
+
+Current ACE-Step API vs. our backend contract. Every response is wrapped in
+`wrap_response(...)` → `{data, code, ...}`; ASS expects **bare** shapes, so the
+wrapper has to go (or be bypassed) on the conformed routes.
+
+| Contract needs | ACE-Step has today | Gap |
+|---|---|---|
+| `POST /v1/generate` → `{job_id, state}` | `POST /release_task` → `{data:{task_id,status,queue_position}}` (JSON **or** multipart) | rename + unwrap; `task_id`→`job_id` |
+| `GET /v1/jobs/{id}` → `{state, artifacts[]}` | `POST /query_result` w/ `task_id_list` → `[{task_id, result(JSON string), status(int)}]` | GET-by-id, unwrap, **build `artifacts[]`**, map int status→queued/running/succeeded/failed |
+| `GET /v1/jobs/{id}/result/{name}` | `GET /v1/audio?path=<server-disk-path>` (allowed-dir gated) | serve by artifact **name**, not by leaking a disk path |
+| `GET /v1/info` (model, device, caps) | `/v1/models` + `/v1/model_inventory` + `/v1/stats`; `/health` exists but custom shape | add `/v1/info`; add `parked` to `/health` |
+| `POST /park` / `POST /unpark` | **absent** | add them (DiT + LM, if loaded, CPU↔GPU + `empty_cache()`, GPU-locked vs a running gen) |
+
+**Artifacts mapping (the real design work).** A generation's `result` JSON string
+carries `audio_paths[]` (relative `/v1/audio?path=` refs), `metas`, `seed_value`,
+`audio_codes`, `cot_caption`/`cot_lyrics`. Proposed artifact set per job:
+
+- one `kind=audio` per batch element (the WAV/mp3/flac — honour `audio_format`),
+- `kind=metadata` for `audio_codes` (the reusable 5Hz blueprint — the fork
+  already went to two patches to surface it; don't drop it here),
+- `kind=lyrics` for `cot_lyrics` when present, `kind=metadata` for `metas` +
+  `seed_value`.
+
+This is exactly the "YuE returns a FLAC *plus* score *plus* lyrics" case the
+artifact contract was designed for — ACE-Step is the first real backend to
+exercise the mixed-kind artifact set, not just audio+spectrogram.
+
+- [x] **Assess the gap** — DONE (this section), code-checked against the fork:
+      `release_task_route.py`, `query_result_route.py`/`_service.py`,
+      `audio_route.py`, `model_service_routes.py`, `job_result_payload.py`, plus
+      SlopBC's `docs/ace-step.md`.
+- [ ] **Merge upstream into the fork FIRST — before any conform work.** The fork
+      (`stevelittlefish/ACE-Step-1.5-inference-server` @ `a41cd44`) hasn't taken upstream
+      (`ace-step/ACE-Step-1.5`, cloned as `references/ACE-Step-1.5-upstream`) in
+      ages; don't pile a big conform on top of a stale base. Rebase/merge upstream,
+      re-resolve the fork's local patches (audio_codes surfacing, the DCW toggle,
+      GPU config), then re-verify this gap assessment against the fresh tree
+      (routes may have shifted). The two are separate gitignored clones with no
+      shared remote — add upstream as a remote on the fork clone to do the merge.
+- [ ] **Non-turbo garbles — use UPSTREAM as the spec, our fork impl is suspect.**
+      User: only turbo worked; base/sft (which need more steps) misbehaved, so the
+      current fork impl "is not even right." `docs/ace-step.md` already names a
+      strong candidate cause: **DCW** (Differential Correction in Wavelet domain)
+      is on-by-default, not exposed in the REST API, and *accumulates* per step —
+      so more steps = worse, exactly the non-turbo symptom; turbo escapes only by
+      hard-clamping to 8 steps. The fork carries a local DCW-off patch that must be
+      re-applied after the upstream merge (it's re-defaulted `True` at ~4 layers).
+      Treat the freshly-merged upstream as the reference spec for correct
+      multi-step behaviour, not our current fork.
+- [ ] **Decide the SlopBC cutover.** ACE-Step is live under SlopBC via the old
+      API. Either (a) SlopBC moves to ASS's `/v1/{service}/jobs` first, or (b) we
+      dual-run until it does. Ripping `/release_task`+`/query_result` without (a)
+      breaks SlopFM. Needs a call before deleting routes.
+- [ ] **Conform the service** (fork, no back-compat): `/release_task`→
+      `POST /v1/generate` returning bare `{job_id, state}`; `/query_result`→
+      `GET /v1/jobs/{id}` returning bare `{state, artifacts[]}` with the mixed-kind
+      set above and int-status→string-state mapping; `/v1/audio`→
+      `GET /v1/jobs/{id}/result/{name}` (by name, no disk-path leak); add
+      `/v1/info` (+ `parked` in `/health`). Keep the multipart source-audio path
+      for cover/repaint (`ctx_audio`/`ref_audio`). Drop `wrap_response` on the
+      conformed routes.
+- [ ] **Add `/park` + `/unpark`** — move DiT (and LM if `thinking`/loaded) CPU↔GPU
+      with mandatory `empty_cache()`, serialized against a running generation by
+      the existing GPU lock. Open question (same as SA3 was): whether it's one
+      clean `.to('cpu')` or several components; likely start `evict = "stop"` and
+      only chase park if the numbers justify it (XL DiT is ~9GB bf16).
+- [ ] **Release CI** — copy `.github/workflows/release.yml` + `make_release.sh`
+      from SA3/stem-separator, publish
+      `ghcr.io/stevelittlefish/ace-step-1.5-inference-server` on a
+      `v*` tag. Big CUDA+torch image; free runner disk first.
+- [ ] **ASS side** — add `[services.acestep]` to `ass.toml` (verb `generate`,
+      evict `stop` to start, shared `/cache` mount, shm). Expect **zero ASS code
+      changes** (it already speaks `artifacts[]` + `/result/{name}`), same as the
+      last two conforms — confirm the mixed-kind artifact set round-trips.
+- [ ] **Real end-to-end on the GPU box** — text2music happy path first
+      (cold-start → generate → harvest → `succeeded` with audio + audio_codes +
+      lyrics artifacts), then exercise cover/repaint's multipart path.
+- [ ] **Measure** resident + parked VRAM + RAM → real `ram_reserve_mb` /
+      `context_tax_mb` in docs/measurements.md (per-process `nvidia-smi` on box).
+
 ## Now — Slice 3: the web console
 
 A small server-rendered web UI for the humans running ASS. Two jobs: an **admin
