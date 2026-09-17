@@ -1,5 +1,9 @@
 # ASS configuration. Everything ASS knows lives here, because environment
 # variables are how you lose an afternoon (rule 4).
+#
+# Full reference for every table and per-service knob (types, defaults, bind
+# mounts, and how to supply a Hugging Face token): the "Configuration" section of
+# README.md.
 
 [memory]
 # Big-server default. Peasants with 16GB should drop this to ~8000 and watch

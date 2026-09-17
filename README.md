@@ -69,6 +69,87 @@ We **Slop straight to `main`** and push immediately. No branches, no PRs —
 those are for people who care about their code. Slop is for the masses, and the
 masses can't consume it while it's sitting on our hard drive.
 
+## Configuration
+
+Everything ASS knows lives in one TOML file (rule 4 — no environment-variable
+swamp). Point ASS at it with `-config`:
+
+```sh
+./run.sh -config ass.toml          # bare binary
+# or, in Docker, docker-compose.yml mounts ./ass.toml into the container
+```
+
+See `ass.toml` (real-ish) and `ass.dev.toml` (mock backends, GPU off) for
+worked examples. The full option surface:
+
+### Global tables
+
+| Table / key | Type | Default | Meaning |
+|---|---|---|---|
+| `memory.ram_budget_mb` | int | — | Total RAM budget. The peasant box sets this low so services fall back to `stop`. |
+| `gpu.enabled` | bool | `false` | Whether to hand the card to backends. **Must be `true` on a real GPU box** — false means no `--gpus` is ever requested. |
+| `gpu.device` | int | `0` | Which card ASS may use. |
+| `gpu.vram_budget_mb` | int | — | Card size minus headroom; covers the pinned model + each parked backend's context tax. |
+| `gpu.context_tax_mb` | int | — | VRAM a parked (alive) process still holds, charged per parked backend. |
+| `gpu.max_resident` | int | `1` | How many backends may hold the GPU at once. `1` = one model on the card, the whole point. |
+| `server.addr` | string | `:8080` | Where ASS itself listens. |
+| `storage.db_path` | string | `data/ass.db` | The sqlite job store. |
+| `storage.results_dir` | string | `data/results` | On-disk harvested-artifact store. |
+| `docker.socket` | string | platform default | Docker daemon socket (e.g. `/var/run/docker.sock`). |
+
+### Per-service: `[services.<name>]`
+
+`<name>` is the service key used in the API path (`POST /v1/<name>/jobs`).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `image` | string | *(required)* | Docker image to run. Local (`stem-separation:local`) or a registry ref (`ghcr.io/.../stem-separator:latest`). ASS never auto-pulls — the image must be present locally. |
+| `port` | int | *(required)* | Container port, **published to the same host port**, and injected into the container as `PORT`. |
+| `verb` | string | — | Job verb (`separate`, `generate`, …); injected as `VERB`. Forms the backend URL `/v1/<verb>`. |
+| `container` | string | `ass-<name>` | Container name ASS creates. |
+| `evict` | `park`\|`stop` | `stop` | How ASS frees the GPU. `park` needs the backend's `/park`+`/unpark`; `stop` kills the container. |
+| `ram_reserve_mb` | int | `0` | Cost of keeping this parked in RAM, for budgeting. |
+| `idle_ttl` | duration | `0` | `0` = never reclaim parked RAM. Set e.g. `"10m"` on a constrained box to demote parked → stopped. |
+| `env` | table | `{}` | Extra environment for the container. **`PORT` and `VERB` are always injected**; add anything else here (e.g. a backend that reads `SEP_PORT` instead of `PORT`). |
+| `volumes` | list | `[]` | Bind mounts, Docker's `"host:container[:ro]"` syntax. Fully yours to change — see below. |
+| `shm_size_mb` | int | daemon default | `/dev/shm` size; some models want more than Docker's 64MB default. |
+
+### Changing bind mounts (weight caches, output dirs)
+
+`volumes` is plain config — edit `ass.toml`, restart ASS, done, no rebuild. The
+**host** side (left of the colon) is entirely yours; point a cache anywhere. The
+**container** side (right) is dictated by the *image*, not ASS: the demucs image
+sets `HF_HOME`/`TORCH_HOME=/cache`, so weights only persist if something is
+mounted at `/cache`. You can override that too by setting a different `HF_HOME`
+in `env` and mounting to match.
+
+### Secrets & the Hugging Face token
+
+ASS has no secret store, and **`ass.toml` is committed — never put a token in
+it.** Backends that need credentials get them one of two ways:
+
+1. **Pre-seed the persistent cache (recommended).** The HF token normally lives
+   at `$HF_HOME/token`, and `HF_HOME` is inside the bind-mounted cache, so drop
+   the token on the host once and it persists exactly like the weights. For
+   demucs (`HF_HOME=/cache/huggingface`, mounted from `/srv/stem-separation/cache`):
+
+   ```sh
+   mkdir -p /srv/stem-separation/cache/huggingface
+   printf '%s' 'hf_your_token_here' > /srv/stem-separation/cache/huggingface/token
+   chmod 600 /srv/stem-separation/cache/huggingface/token
+   # equivalently: HF_HOME=/srv/stem-separation/cache/huggingface huggingface-cli login
+   ```
+
+   The container sees it at `/cache/huggingface/token` and is authenticated. It
+   survives container recreation and image updates — write it once per host.
+
+2. **Env var**, for gated models: set `HF_TOKEN` in the service's `env`. Only do
+   this if your `ass.toml` is a local, uncommitted copy — otherwise the token
+   leaks into git. Prefer method 1.
+
+**demucs (`htdemucs_ft`) needs no token** — its weights are public. The token
+only matters for gated models (some alignment/generation backends down the line).
+
 ## License
 
 MIT — see [LICENSE](LICENSE). ASS talks to every backend over HTTP, across a
