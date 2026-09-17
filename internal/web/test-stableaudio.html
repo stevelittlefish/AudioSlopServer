@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en" data-page="test">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASS · stableaudio</title>
+<link rel="stylesheet" href="/assets/test.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">ass</span>
+    <span class="sub"><b id="svcname">stableaudio</b> · <span id="svcverb">generate</span></span>
+  </div>
+  <span class="spacer"></span>
+  <a class="back" href="/admin">‹ admin</a>
+</header>
+
+<main>
+  <section class="panel" id="formpanel">
+    <h2>Generate audio</h2>
+    <p class="hint">Stable Audio 3 Medium — a text prompt into a clip. Variation restyles an init clip; inpaint regenerates a masked span. POST /v1/stableaudio/jobs.</p>
+    <div id="form">
+      <div class="seg wf" data-seg="workflow">
+        <button type="button" data-v="text" class="on">text → audio</button>
+        <button type="button" data-v="variation">variation</button>
+        <button type="button" data-v="inpaint">inpaint</button>
+      </div>
+
+      <div class="field"><label>Prompt</label>
+        <textarea data-p="prompt" placeholder="warm analog ambient pad, slow evolving, spacious"></textarea></div>
+
+      <div class="row">
+        <div class="field"><label>Duration (s)</label><input type="number" data-p="seconds_total" min="1" placeholder="model max"></div>
+        <div class="field"><label>Steps</label><input type="number" data-p="steps" min="1" placeholder="default"></div>
+        <div class="field"><label>Seed (−1 = random)</label><input type="number" data-p="seed" placeholder="-1"></div>
+      </div>
+
+      <div class="wfsec" data-wf="variation">
+        <div class="field">
+          <label>Init audio (restyled under the prompt)</label>
+          <div class="drop" data-field="init_audio">
+            <div>Drop a file here or <b>browse</b></div><div class="chosen" hidden></div>
+            <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+          </div>
+        </div>
+        <div class="field"><label>Init noise level (0.01 tiny change → 1.0 ignore init)</label>
+          <input type="number" data-p="init_noise_level" min="0.01" max="1" step="0.05" placeholder="0.9"></div>
+      </div>
+
+      <div class="wfsec" data-wf="inpaint">
+        <div class="field">
+          <label>Audio to inpaint</label>
+          <div class="drop" data-field="inpaint_audio">
+            <div>Drop a file here or <b>browse</b></div><div class="chosen" hidden></div>
+            <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Mask starts (s, comma-sep)</label><input type="text" data-p="inpaint_mask_starts" placeholder="8"></div>
+          <div class="field"><label>Mask ends (s, comma-sep)</label><input type="text" data-p="inpaint_mask_ends" placeholder="16"></div>
+        </div>
+        <p class="note">Regenerates the masked region(s); starts and ends must have equal counts. For continuation, set start = the clip's length and a longer duration.</p>
+      </div>
+
+      <details class="adv">
+        <summary>advanced</summary>
+        <div class="field"><label>Negative prompt</label>
+          <input type="text" data-p="negative_prompt" placeholder="e.g. vocals, distortion"></div>
+        <div class="row">
+          <div class="field"><label>CFG scale (blank = default)</label><input type="number" data-p="cfg_scale" step="0.5" placeholder="model default"></div>
+          <div class="field"><label>Batch size</label><input type="number" data-p="batch_size" min="1" placeholder="1"></div>
+          <div class="field"><label>LoRA strength (blank = off)</label><input type="number" data-p="lora_strength" step="0.05" placeholder="off"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Output format</label>
+            <select data-p="file_format">
+              <option>wav</option><option>flac</option><option>mp3 320k</option>
+              <option>mp3 v0</option><option>mp3 128k</option>
+              <option>m4a aac_he_v2 64k</option><option>m4a aac_he_v2 32k</option>
+            </select></div>
+          <div class="field" style="display:flex;align-items:flex-end;">
+            <label class="check"><input type="checkbox" data-p="return_spectrogram" checked> return spectrogram</label></div>
+        </div>
+      </details>
+    </div>
+    <div style="margin-top:6px;"><button class="primary" id="submit" disabled>Run</button></div>
+  </section>
+
+  <section class="panel" id="resultpanel" hidden>
+    <h2>Result</h2>
+    <div class="status" id="status"></div>
+    <div class="art" id="art" style="margin-top:16px;"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/assets/test-common.js"></script>
+<script>
+"use strict";
+window.ASS_TEST = {
+  ready(root){ applyWorkflow(root, "text"); },  // show the default section
+  build(root){
+    const wf = seg(root,"workflow") || "text";
+    const prompt = val(root,"prompt");
+    if (!prompt && wf !== "inpaint") throw new Error("a prompt is required");
+    const p = { prompt };
+    const d  = numOpt(root,"seconds_total"); if (d!==undefined) p.seconds_total = d;
+    const st = numOpt(root,"steps");         if (st!==undefined) p.steps = st;
+    const sd = numOpt(root,"seed");          if (sd!==undefined) p.seed = sd;
+    const cf = numOpt(root,"cfg_scale");     if (cf!==undefined) p.cfg_scale = cf;
+    const bs = numOpt(root,"batch_size");    if (bs!==undefined) p.batch_size = bs;
+    const ng = val(root,"negative_prompt");  if (ng) p.negative_prompt = ng;
+    p.file_format = val(root,"file_format") || "wav";
+    p.return_spectrogram = checked(root,"return_spectrogram");
+    const lora = numOpt(root,"lora_strength"); if (lora!==undefined) p.loras = [{ strength: lora }];
+
+    const out = [];
+    if (wf === "variation") {
+      const f = getFile("init_audio"); if (!f) throw new Error("variation needs an init audio file");
+      out.push({ field:"init_audio", file:f });
+      const nl = numOpt(root,"init_noise_level"); if (nl!==undefined) p.init_noise_level = nl;
+    } else if (wf === "inpaint") {
+      const f = getFile("inpaint_audio"); if (!f) throw new Error("inpaint needs an audio file");
+      out.push({ field:"inpaint_audio", file:f });
+      const starts = numList(val(root,"inpaint_mask_starts"));
+      const ends   = numList(val(root,"inpaint_mask_ends"));
+      if (!starts || !ends) throw new Error("inpaint needs mask starts and ends");
+      if (starts.length !== ends.length) throw new Error("mask starts and ends must have equal counts");
+      p.inpaint_mask_starts = starts; p.inpaint_mask_ends = ends;
+    }
+    // SA3 fork reads the params-JSON blob + optional file part.
+    return { params:p, files:out, encoding:"blob" };
+  },
+};
+</script>
+</body>
+</html>

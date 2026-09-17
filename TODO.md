@@ -356,11 +356,33 @@ viewing it live.)
       page has a `‹ admin` back link. (A dedicated index page is unnecessary — the
       admin panel already lists everything with links.)
 
-**Part C done** for stem-separator; the generate form is ready to exercise once
-SA3 is verified on the GPU box.
+- [x] **Refactored to a bespoke page per service** (the one-page-keyed-by-verb
+      design was broken: acestep and stableaudio both use verb `generate`, so
+      acestep would have rendered SA3's form and posted SA3 params at it). Now
+      `internal/web/web.go` maps each service name → its own page
+      (`test-demucs.html`, `test-stableaudio.html`, `test-acestep.html`), with
+      the old generic raw-params form (`test.html`) as the fallback for any
+      un-paged backend. Shared chrome (CSS + the poll/submit/render runtime)
+      moved to `assets/test.css` + `assets/test-common.js`, both served from the
+      embed FS, so each page carries only its form + a `build()`. `build()`
+      returns an `encoding` (`json` | `blob` | `paramobj`) because ASS forwards
+      the body verbatim and the three backends want different shapes. Covered by
+      `web_test.go` (per-service serve, 404, fallback, shared assets, redirect).
+- [x] **ACE-Step generate form** — four task types via a segmented toggle:
+      text→music, cover, repaint, extract. Caption + lyrics + thinking (5Hz LM)
+      + vocal language + duration/steps/guidance/seed always visible; cover
+      (cover/noise strength), repaint (start/end/mode/strength) and extract
+      (track_name + codes-only) reveal their own source-audio drop + controls.
+      Advanced drawer: model, DCW (auto/on/off tri-state), bpm/key/time-sig,
+      LM temp/cfg/top-p, CoT caption, constrained decoding. text→music posts a
+      JSON body; source-audio tasks post multipart with the params as a
+      `param_obj` field (ACE-Step's `RequestParser` unpacks it, keeping types) +
+      the `ctx_audio` file. Text artifacts (lyrics/audio_codes/metadata) now
+      preview inline in a `<pre>`. Params sourced from the fork's
+      `GenerateMusicRequest` model. Needs the real backend on the box to verify.
 
-Build generic-first (one test page for all services), add per-service polish
-after. Do Part A first — it's independently useful and unblocks B and C.
+**Part C done** for all three implemented backends (demucs verified on the mock;
+SA3 + ACE-Step forms ready to exercise once each is up on the GPU box).
 
 ## Later — The rest
 

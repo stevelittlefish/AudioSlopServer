@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en" data-page="test">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASS · acestep</title>
+<link rel="stylesheet" href="/assets/test.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">ass</span>
+    <span class="sub"><b id="svcname">acestep</b> · <span id="svcverb">generate</span></span>
+  </div>
+  <span class="spacer"></span>
+  <a class="back" href="/admin">‹ admin</a>
+</header>
+
+<main>
+  <section class="panel" id="formpanel">
+    <h2>Generate a song</h2>
+    <p class="hint">ACE-Step 1.5 XL — a caption (+ optional lyrics) into a full song. Cover / repaint / extract work from a source clip. Returns the audio plus its 5Hz code blueprint, lyrics and metas. POST /v1/acestep/jobs.</p>
+    <div id="form">
+      <div class="seg wf" data-seg="task">
+        <button type="button" data-v="text2music" class="on">text → music</button>
+        <button type="button" data-v="cover">cover</button>
+        <button type="button" data-v="repaint">repaint</button>
+        <button type="button" data-v="extract">extract</button>
+      </div>
+
+      <div class="field"><label>Caption / description</label>
+        <textarea data-p="prompt" placeholder="dreamy synth-pop, warm analog pads, female vocals, 90 bpm, nostalgic"></textarea></div>
+
+      <div class="field" data-wf="text2music cover repaint"><label>Lyrics (blank = instrumental / let the LM write them)</label>
+        <textarea data-p="lyrics" placeholder="[verse]\n..."></textarea></div>
+
+      <div class="row">
+        <div class="field"><label>Vocal language</label>
+          <select data-p="vocal_language">
+            <option value="unknown">instrumental / auto</option>
+            <option value="en" selected>en</option><option value="zh">zh</option><option value="ja">ja</option>
+            <option value="ko">ko</option><option value="es">es</option><option value="fr">fr</option>
+            <option value="de">de</option><option value="it">it</option><option value="pt">pt</option>
+            <option value="ru">ru</option><option value="ar">ar</option><option value="hi">hi</option>
+          </select></div>
+        <div class="field"><label>Duration (s, blank = auto)</label><input type="number" data-p="audio_duration" min="1" placeholder="auto"></div>
+        <div class="field"><label>Output format</label>
+          <select data-p="audio_format"><option>mp3</option><option>flac</option><option>wav</option><option>wav32</option><option>opus</option><option>aac</option></select></div>
+      </div>
+
+      <div class="row">
+        <div class="field"><label>Steps</label><input type="number" data-p="inference_steps" min="1" placeholder="8 (turbo)"></div>
+        <div class="field"><label>Guidance scale</label><input type="number" data-p="guidance_scale" step="0.5" placeholder="7.0"></div>
+        <div class="field"><label>Seed (−1 = random)</label><input type="number" data-p="seed" placeholder="-1"></div>
+        <div class="field" style="display:flex;align-items:flex-end;">
+          <label class="check"><input type="checkbox" data-p="thinking"> thinking (5Hz LM plans codes)</label></div>
+      </div>
+
+      <!-- cover -->
+      <div class="wfsec" data-wf="cover">
+        <div class="field"><label>Source audio to cover</label>
+          <div class="drop" data-field="ctx_audio">
+            <div>Drop a file here or <b>browse</b></div><div class="chosen" hidden></div>
+            <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Cover strength (0→1, closeness to source)</label><input type="number" data-p="audio_cover_strength" min="0" max="1" step="0.05" placeholder="1.0"></div>
+          <div class="field"><label>Cover noise strength (0 pure noise → 1 closest to src)</label><input type="number" data-p="cover_noise_strength" min="0" max="1" step="0.05" placeholder="0.0"></div>
+        </div>
+      </div>
+
+      <!-- repaint -->
+      <div class="wfsec" data-wf="repaint">
+        <div class="field"><label>Source audio to repaint</label>
+          <div class="drop" data-field="ctx_audio">
+            <div>Drop a file here or <b>browse</b></div><div class="chosen" hidden></div>
+            <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Repaint start (s)</label><input type="number" data-p="repainting_start" min="0" step="0.1" placeholder="0"></div>
+          <div class="field"><label>Repaint end (s, blank = to end)</label><input type="number" data-p="repainting_end" min="0" step="0.1" placeholder="end"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Mode</label>
+            <select data-p="repaint_mode"><option>balanced</option><option>conservative</option><option>aggressive</option></select></div>
+          <div class="field"><label>Strength (balanced only, 0 keep → 1 pure)</label><input type="number" data-p="repaint_strength" min="0" max="1" step="0.05" placeholder="0.5"></div>
+        </div>
+      </div>
+
+      <!-- extract -->
+      <div class="wfsec" data-wf="extract">
+        <div class="field"><label>Source audio to analyse / extract</label>
+          <div class="drop" data-field="ctx_audio">
+            <div>Drop a file here or <b>browse</b></div><div class="chosen" hidden></div>
+            <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Track to isolate (blank = all)</label>
+            <select data-p="track_name">
+              <option value="">— none —</option>
+              <option>vocals</option><option>drums</option><option>bass</option><option>guitar</option>
+              <option>keyboard</option><option>strings</option><option>synth</option><option>percussion</option>
+              <option>brass</option><option>woodwinds</option><option>backing_vocals</option><option>fx</option>
+            </select></div>
+          <div class="field" style="display:flex;align-items:flex-end;">
+            <label class="check"><input type="checkbox" data-p="extract_codes_only"> codes only (no audio render)</label></div>
+        </div>
+        <p class="note">Extract runs the analysis path: it pulls the 5Hz semantic codes (and metas) out of the source. Handy for seeding a text→music run's code hint.</p>
+      </div>
+
+      <details class="adv">
+        <summary>advanced</summary>
+        <div class="row">
+          <div class="field"><label>DiT model (blank = server default)</label><input type="text" data-p="model" placeholder="acestep-v15-xl-turbo"></div>
+          <div class="field"><label>DCW</label>
+            <select data-p="dcw"><option value="">auto (per-model default)</option><option value="true">force on</option><option value="false">force off</option></select></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>BPM (blank = auto)</label><input type="number" data-p="bpm" min="1" placeholder="auto"></div>
+          <div class="field"><label>Key / scale</label><input type="text" data-p="key_scale" placeholder="e.g. C major"></div>
+          <div class="field"><label>Time signature</label><input type="text" data-p="time_signature" placeholder="e.g. 4/4"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>LM temperature</label><input type="number" data-p="lm_temperature" step="0.05" placeholder="0.85"></div>
+          <div class="field"><label>LM CFG scale</label><input type="number" data-p="lm_cfg_scale" step="0.1" placeholder="2.5"></div>
+          <div class="field"><label>LM top-p</label><input type="number" data-p="lm_top_p" min="0" max="1" step="0.05" placeholder="0.9"></div>
+        </div>
+        <label class="check" style="margin-bottom:12px;"><input type="checkbox" data-p="use_cot_caption" checked> use CoT caption (LM rewrites the caption)</label>
+        <label class="check"><input type="checkbox" data-p="constrained_decoding" checked> constrained decoding</label>
+      </details>
+    </div>
+    <div style="margin-top:6px;"><button class="primary" id="submit" disabled>Run</button></div>
+  </section>
+
+  <section class="panel" id="resultpanel" hidden>
+    <h2>Result</h2>
+    <div class="status" id="status"></div>
+    <div class="art" id="art" style="margin-top:16px;"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/assets/test-common.js"></script>
+<script>
+"use strict";
+window.ASS_TEST = {
+  ready(root){ applyWorkflow(root, "text2music"); },
+  build(root){
+    const task = seg(root,"task") || "text2music";
+    const p = { task_type: task };
+
+    // --- shared conditioning ---------------------------------------------
+    const caption = val(root,"prompt");
+    if (task === "text2music" && !caption) throw new Error("a caption is required for text → music");
+    if (caption) p.prompt = caption;
+    const lyr = val(root,"lyrics"); if (lyr) p.lyrics = lyr;
+    p.vocal_language = val(root,"vocal_language") || "en";
+    p.audio_format = val(root,"audio_format") || "mp3";
+    p.thinking = checked(root,"thinking");
+
+    const dur = numOpt(root,"audio_duration");  if (dur!==undefined) p.audio_duration = dur;
+    const st  = numOpt(root,"inference_steps");  if (st!==undefined) p.inference_steps = st;
+    const gs  = numOpt(root,"guidance_scale");   if (gs!==undefined) p.guidance_scale = gs;
+
+    // seed: -1 (or blank) => random; anything else pins it.
+    const sd = numOpt(root,"seed");
+    if (sd===undefined || sd===-1) { p.use_random_seed = true; p.seed = -1; }
+    else { p.use_random_seed = false; p.seed = sd; }
+
+    // --- advanced ---------------------------------------------------------
+    const model = val(root,"model"); if (model) p.model = model;
+    const dcw = val(root,"dcw"); if (dcw==="true") p.dcw_enabled = true; else if (dcw==="false") p.dcw_enabled = false;
+    const bpm = numOpt(root,"bpm"); if (bpm!==undefined) p.bpm = bpm;
+    const ks = val(root,"key_scale"); if (ks) p.key_scale = ks;
+    const ts = val(root,"time_signature"); if (ts) p.time_signature = ts;
+    const lt = numOpt(root,"lm_temperature"); if (lt!==undefined) p.lm_temperature = lt;
+    const lc = numOpt(root,"lm_cfg_scale");   if (lc!==undefined) p.lm_cfg_scale = lc;
+    const lp = numOpt(root,"lm_top_p");       if (lp!==undefined) p.lm_top_p = lp;
+    p.use_cot_caption = checked(root,"use_cot_caption");
+    p.constrained_decoding = checked(root,"constrained_decoding");
+
+    // --- task specifics ---------------------------------------------------
+    const files = [];
+    if (task === "text2music") {
+      // No source audio -> plain JSON body; the backend's JSON branch takes it.
+      return { params:p, files:[], encoding:"json" };
+    }
+
+    const src = getFile("ctx_audio");
+    if (!src) throw new Error(`${task} needs a source audio file`);
+    files.push({ field:"ctx_audio", file:src });
+
+    if (task === "cover") {
+      const cs = numOpt(root,"audio_cover_strength"); if (cs!==undefined) p.audio_cover_strength = cs;
+      const cn = numOpt(root,"cover_noise_strength"); if (cn!==undefined) p.cover_noise_strength = cn;
+    } else if (task === "repaint") {
+      const rs = numOpt(root,"repainting_start"); if (rs!==undefined) p.repainting_start = rs;
+      const re = numOpt(root,"repainting_end");   if (re!==undefined) p.repainting_end = re;
+      p.repaint_mode = val(root,"repaint_mode") || "balanced";
+      const rst = numOpt(root,"repaint_strength"); if (rst!==undefined) p.repaint_strength = rst;
+    } else if (task === "extract") {
+      const tn = val(root,"track_name"); if (tn) p.track_name = tn;
+      p.extract_codes_only = checked(root,"extract_codes_only");
+    }
+
+    // Source-audio tasks -> multipart with the params as a JSON "param_obj"
+    // field (ACE-Step's RequestParser unpacks it, keeping types) + the file.
+    return { params:p, files, encoding:"paramobj" };
+  },
+};
+</script>
+</body>
+</html>

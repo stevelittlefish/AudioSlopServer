@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" data-page="test">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASS · demucs</title>
+<link rel="stylesheet" href="/assets/test.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">ass</span>
+    <span class="sub"><b id="svcname">demucs</b> · <span id="svcverb">separate</span></span>
+  </div>
+  <span class="spacer"></span>
+  <a class="back" href="/admin">‹ admin</a>
+</header>
+
+<main>
+  <section class="panel" id="formpanel">
+    <h2>Separate stems</h2>
+    <p class="hint">Drop a mixed track in; get vocals + instrumental (or a full four-stem split) back. POST /v1/demucs/jobs.</p>
+    <div id="form">
+      <!-- dropHTML isn't available at parse time (it's in the shared JS), so the
+           drop zone is written out here directly; the shared wireDrops() finds it. -->
+      <div class="field">
+        <label>Audio to separate</label>
+        <div class="drop" data-field="audio">
+          <div>Drop a file here or <b>browse</b></div>
+          <div class="chosen" hidden></div>
+          <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+        </div>
+      </div>
+      <div class="field">
+        <label>Mode</label>
+        <div class="seg" data-seg="mode">
+          <button type="button" data-v="two-stem" class="on">two-stem (vocals + instrumental)</button>
+          <button type="button" data-v="four-stem">four-stem</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Output format</label>
+          <select data-p="file_format"><option>wav</option><option>flac</option><option>mp3</option></select></div>
+        <div class="field"><label>Shifts (blank = default)</label>
+          <input type="number" data-p="shifts" min="1" max="10" placeholder="1"></div>
+        <div class="field"><label>Overlap (blank = default)</label>
+          <input type="number" data-p="overlap" min="0" max="0.99" step="0.05" placeholder="0.25"></div>
+      </div>
+    </div>
+    <div style="margin-top:6px;"><button class="primary" id="submit" disabled>Run</button></div>
+  </section>
+
+  <section class="panel" id="resultpanel" hidden>
+    <h2>Result</h2>
+    <div class="status" id="status"></div>
+    <div class="art" id="art" style="margin-top:16px;"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/assets/test-common.js"></script>
+<script>
+"use strict";
+window.ASS_TEST = {
+  build(root){
+    const f = getFile("audio");
+    if (!f) throw new Error("pick an audio file first");
+    const p = { mode: seg(root,"mode"), file_format: val(root,"file_format") };
+    const sh = numOpt(root,"shifts");  if (sh!==undefined) p.shifts = sh;
+    const ov = numOpt(root,"overlap"); if (ov!==undefined) p.overlap = ov;
+    // demucs fork reads the params-JSON blob + an "audio" file part.
+    return { params:p, files:[{field:"audio", file:f}], encoding:"blob" };
+  },
+};
+</script>
+</body>
+</html>

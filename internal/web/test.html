@@ -3,103 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ASS · Test</title>
-<style>
-  :root {
-    --bg:#0b0d10; --bg2:#12151a; --panel:#151920; --panel2:#1b2028;
-    --line:#242b35; --line2:#2f3945;
-    --ink:#e7ecf3; --ink-dim:#8b97a7; --ink-faint:#5b6675;
-    --accent:#5ee0b0; --accent-dim:#2b6b57;
-    --parked:#f2c14e; --danger:#ff6b6b; --danger-dim:#5a2626;
-    --radius:14px;
-    --mono:ui-monospace,"DejaVu Sans Mono","JetBrains Mono","Cascadia Code","Liberation Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  }
-  * { box-sizing:border-box; }
-  html,body { margin:0; }
-  body {
-    background:
-      radial-gradient(900px 500px at 85% -10%, #16211d 0%, transparent 60%),
-      radial-gradient(700px 500px at -5% 0%, #1a1720 0%, transparent 55%),
-      var(--bg);
-    color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased; min-height:100vh; line-height:1.45;
-  }
-  a { color:var(--accent); text-decoration:none; }
-
-  header.top { display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:22px 28px; border-bottom:1px solid var(--line); background:linear-gradient(180deg,rgba(255,255,255,.02),transparent); }
-  .brand { display:flex; align-items:baseline; gap:12px; }
-  .brand .logo { font-family:var(--mono); font-weight:700; font-size:30px; line-height:1; letter-spacing:-.02em; color:var(--accent); text-shadow:0 0 22px rgba(94,224,176,.4); user-select:none; }
-  .brand .sub { color:var(--ink-dim); font-size:13px; letter-spacing:.02em; }
-  .brand .sub b { color:var(--ink); font-weight:600; }
-  .spacer { flex:1; }
-  .back { font-family:var(--mono); font-size:12px; color:var(--ink-dim); }
-  .back:hover { color:var(--accent); }
-
-  main { padding:26px 28px 60px; max-width:900px; margin:0 auto; display:grid; gap:20px; }
-
-  .panel { background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--line); border-radius:var(--radius); padding:22px; }
-  .panel h2 { margin:0 0 4px; font-size:14px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-dim); }
-  .panel .hint { color:var(--ink-faint); font-size:12.5px; margin:0 0 18px; }
-
-  label { display:block; font-size:12px; color:var(--ink-dim); margin:0 0 6px; letter-spacing:.02em; }
-  .field { margin-bottom:16px; }
-  input[type=text], input[type=number], textarea, select {
-    width:100%; background:var(--panel2); border:1px solid var(--line2); color:var(--ink);
-    border-radius:9px; padding:9px 11px; font-family:var(--sans); font-size:13.5px;
-  }
-  textarea { font-family:var(--mono); font-size:12.5px; min-height:70px; resize:vertical; }
-  input:focus, textarea:focus, select:focus { outline:none; border-color:var(--accent-dim); }
-  .row { display:flex; gap:14px; flex-wrap:wrap; }
-  .row .field { flex:1; min-width:130px; }
-
-  .drop {
-    border:1.5px dashed var(--line2); border-radius:11px; padding:22px; text-align:center;
-    color:var(--ink-faint); font-size:13px; cursor:pointer; transition:.15s ease; background:rgba(255,255,255,.01);
-  }
-  .drop:hover, .drop.over { border-color:var(--accent-dim); color:var(--ink-dim); background:rgba(94,224,176,.04); }
-  .drop b { color:var(--accent); }
-  .drop .chosen { color:var(--ink); font-family:var(--mono); font-size:12.5px; margin-top:8px; }
-
-  .seg { display:inline-flex; border:1px solid var(--line2); border-radius:9px; overflow:hidden; }
-  .seg button { background:var(--panel2); border:0; border-right:1px solid var(--line2); color:var(--ink-dim); padding:8px 14px; font-size:13px; cursor:pointer; }
-  .seg button:last-child { border-right:0; }
-  .seg button.on { background:var(--accent-dim); color:#eafff6; }
-  .seg.wf { margin-bottom:18px; }
-
-  .wfsec { display:none; }
-  .wfsec.show { display:block; }
-  .check { display:flex; align-items:center; gap:9px; color:var(--ink-dim); font-size:13px; cursor:pointer; }
-  .check input { width:16px; height:16px; accent-color:var(--accent); }
-  .adv { border-top:1px solid var(--line); margin-top:6px; padding-top:16px; }
-  .adv > summary { cursor:pointer; color:var(--ink-faint); font-size:12px; font-family:var(--mono); list-style:none; margin-bottom:14px; }
-  .adv > summary::-webkit-details-marker { display:none; }
-  .adv[open] > summary { color:var(--ink-dim); }
-  .note { color:var(--ink-faint); font-size:11.5px; margin:-8px 0 14px; }
-
-  button.primary { background:var(--accent-dim); border:1px solid var(--accent); color:#eafff6; font-size:14px; font-weight:600; padding:11px 22px; border-radius:10px; cursor:pointer; transition:.12s ease; }
-  button.primary:hover:not(:disabled) { background:#347c65; }
-  button.primary:disabled { opacity:.4; cursor:not-allowed; }
-
-  .status { display:flex; align-items:center; gap:11px; font-family:var(--mono); font-size:13px; color:var(--ink-dim); }
-  .spin { width:14px; height:14px; border:2px solid var(--line2); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  .status.ok { color:var(--accent); } .status.err { color:var(--danger); }
-  .substate { color:var(--ink-faint); font-size:12px; }
-
-  .art { display:flex; flex-direction:column; gap:12px; }
-  .artcard { border:1px solid var(--line); border-radius:11px; padding:14px 16px; background:var(--panel2); }
-  .artcard .arthead { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-  .artcard .aname { font-weight:600; font-size:14px; }
-  .artcard .akind { font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); border:1px solid var(--line2); padding:1px 6px; border-radius:5px; }
-  .artcard .asize { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--ink-faint); }
-  .artcard audio { width:100%; height:36px; margin-bottom:8px; }
-  .artcard .dl { font-family:var(--mono); font-size:12px; }
-  .muted { color:var(--ink-faint); font-family:var(--mono); font-size:12.5px; }
-
-  .toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel2); border:1px solid var(--line2); color:var(--ink); padding:11px 18px; border-radius:10px; font-size:13px; font-family:var(--mono); opacity:0; pointer-events:none; transition:.2s ease; max-width:90vw; box-shadow:0 8px 30px rgba(0,0,0,.5); }
-  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-  .toast.err { border-color:var(--danger); color:#ffb3b3; }
-</style>
+<title>ASS · test</title>
+<link rel="stylesheet" href="/assets/test.css">
 </head>
 <body>
 <header class="top">
@@ -113,12 +18,29 @@
 
 <main>
   <section class="panel" id="formpanel">
-    <h2>Submit a job</h2>
-    <p class="hint" id="formhint">Loading service…</p>
-    <div id="form"></div>
-    <div style="margin-top:6px;">
-      <button class="primary" id="submit" disabled>Run</button>
+    <h2>Submit a job (generic)</h2>
+    <p class="hint">This service has no bespoke test page yet, so here's the raw form: hand it the params JSON your backend expects, pick how to encode it, optionally attach a file. POST /v1/&lt;service&gt;/jobs.</p>
+    <div id="form">
+      <div class="field"><label>Params (JSON)</label>
+        <textarea data-p="__raw" placeholder='{"prompt":"..."}'>{}</textarea></div>
+      <div class="row">
+        <div class="field"><label>Encoding</label>
+          <div class="seg" data-seg="encoding">
+            <button type="button" data-v="json" class="on">JSON body</button>
+            <button type="button" data-v="blob">multipart · params</button>
+            <button type="button" data-v="paramobj">multipart · param_obj</button>
+          </div></div>
+      </div>
+      <div class="field">
+        <label>Optional input file (multipart field name below)</label>
+        <div class="drop" data-field="audio">
+          <div>Drop a file here or <b>browse</b></div><div class="chosen" hidden></div>
+          <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+        </div>
+      </div>
+      <div class="field"><label>File field name</label><input type="text" data-p="__field" placeholder="audio"></div>
     </div>
+    <div style="margin-top:6px;"><button class="primary" id="submit" disabled>Run</button></div>
   </section>
 
   <section class="panel" id="resultpanel" hidden>
@@ -129,308 +51,20 @@
 </main>
 
 <div class="toast" id="toast"></div>
-
+<script src="/assets/test-common.js"></script>
 <script>
 "use strict";
-const $ = s => document.querySelector(s);
-const SERVICE = decodeURIComponent(location.pathname.split("/").pop());
-let VERB = null;
-let FORM = null;
-let polling = false;
-const files = {}; // multipart field name -> selected File
-
-function toast(msg, isErr) {
-  const el = $("#toast"); el.textContent = msg; el.classList.toggle("err", !!isErr);
-  el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 3600);
-}
-function fmtBytes(n){ if(n==null) return "—"; const u=["B","KB","MB","GB"]; let i=0,v=n; while(v>=1024&&i<u.length-1){v/=1024;i++;} return v.toFixed(v<10&&i>0?1:0)+u[i]; }
-function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-
-// --- tiny form helpers -----------------------------------------------------
-const val = (r,p) => { const el=r.querySelector(`[data-p="${p}"]`); return el?el.value.trim():""; };
-const numOpt = (r,p) => { const v=val(r,p); return v===""?undefined:Number(v); };
-const checked = (r,p) => { const el=r.querySelector(`[data-p="${p}"]`); return el?el.checked:false; };
-const seg = (r,name) => { const on=r.querySelector(`[data-seg="${name}"] .on`); return on?on.dataset.v:""; };
-const getFile = f => files[f] || null;
-
-// Parse a comma/space list of numbers ("8, 16" -> [8,16]); "" -> null.
-function numList(s){ const t=(s||"").trim(); if(!t) return null; return t.split(/[,\s]+/).filter(Boolean).map(x=>{ const n=Number(x); if(isNaN(n)) throw new Error(`"${x}" is not a number`); return n; }); }
-
-// A file drop zone, addressed by its multipart field name.
-function dropHTML(label, field, optional){
-  return `
-    <div class="field">
-      <label>${esc(label)}${optional?" (optional)":""}</label>
-      <div class="drop" data-field="${field}">
-        <div>Drop a file here or <b>browse</b></div>
-        <div class="chosen" hidden></div>
-        <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
-      </div>
-    </div>`;
-}
-
-function wireSegments(root){
-  root.querySelectorAll("[data-seg]").forEach(sg => {
-    sg.querySelectorAll("button").forEach(b => b.onclick = () => {
-      sg.querySelectorAll("button").forEach(x => x.classList.remove("on"));
-      b.classList.add("on");
-      if (sg.dataset.seg === "workflow") applyWorkflow(root, b.dataset.v);
-    });
-  });
-}
-function wireDrops(root){
-  root.querySelectorAll(".drop").forEach(drop => {
-    const field = drop.dataset.field;
-    const input = drop.querySelector("input[type=file]");
-    const chosen = drop.querySelector(".chosen");
-    const set = f => { files[field]=f||null; if(f){ chosen.hidden=false; chosen.textContent=`${f.name} · ${fmtBytes(f.size)}`; } else { chosen.hidden=true; } };
-    drop.onclick = () => input.click();
-    input.onchange = () => set(input.files[0]);
-    ["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("over"); }));
-    ["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("over"); }));
-    drop.addEventListener("drop", ev => { if(ev.dataTransfer.files[0]) set(ev.dataTransfer.files[0]); });
-  });
-}
-// SA3 workflow toggle: show only the active workflow's extra section.
-function applyWorkflow(root, wf){
-  root.querySelectorAll("[data-wf]").forEach(sec => sec.classList.toggle("show", sec.dataset.wf === wf));
-}
-
-// --- forms per verb --------------------------------------------------------
-// Each: { html, build(root) -> {params, files:[{field,file,filename}]} }. build
-// throws on bad/missing input; the message is toasted.
-const FORMS = {
-  separate: {
-    html: `
-      ${dropHTML("Audio to separate","audio")}
-      <div class="field">
-        <label>Mode</label>
-        <div class="seg" data-seg="mode">
-          <button type="button" data-v="two-stem" class="on">two-stem (vocals + instrumental)</button>
-          <button type="button" data-v="four-stem">four-stem</button>
-        </div>
-      </div>
-      <div class="row">
-        <div class="field"><label>Output format</label>
-          <select data-p="file_format"><option>wav</option><option>flac</option><option>mp3</option></select></div>
-        <div class="field"><label>Shifts (blank = default)</label>
-          <input type="number" data-p="shifts" min="1" max="10" placeholder="1"></div>
-        <div class="field"><label>Overlap (blank = default)</label>
-          <input type="number" data-p="overlap" min="0" max="0.99" step="0.05" placeholder="0.25"></div>
-      </div>`,
-    build(root){
-      const f = getFile("audio");
-      if (!f) throw new Error("pick an audio file first");
-      const p = { mode: seg(root,"mode"), file_format: val(root,"file_format") };
-      const sh = numOpt(root,"shifts"); if (sh!==undefined) p.shifts = sh;
-      const ov = numOpt(root,"overlap"); if (ov!==undefined) p.overlap = ov;
-      return { params:p, files:[{field:"audio", file:f}] };
-    },
-  },
-
-  generate: {
-    html: `
-      <div class="seg wf" data-seg="workflow">
-        <button type="button" data-v="text" class="on">text → audio</button>
-        <button type="button" data-v="variation">variation</button>
-        <button type="button" data-v="inpaint">inpaint</button>
-      </div>
-
-      <div class="field"><label>Prompt</label>
-        <textarea data-p="prompt" placeholder="warm analog ambient pad, slow evolving, spacious"></textarea></div>
-
-      <div class="row">
-        <div class="field"><label>Duration (s)</label><input type="number" data-p="seconds_total" min="1" placeholder="model max"></div>
-        <div class="field"><label>Steps</label><input type="number" data-p="steps" min="1" placeholder="default"></div>
-        <div class="field"><label>Seed (−1 = random)</label><input type="number" data-p="seed" placeholder="-1"></div>
-      </div>
-
-      <div class="wfsec" data-wf="variation">
-        ${dropHTML("Init audio (restyled under the prompt)","init_audio")}
-        <div class="field"><label>Init noise level (0.01 tiny change → 1.0 ignore init)</label>
-          <input type="number" data-p="init_noise_level" min="0.01" max="1" step="0.05" placeholder="0.9"></div>
-      </div>
-
-      <div class="wfsec" data-wf="inpaint">
-        ${dropHTML("Audio to inpaint","inpaint_audio")}
-        <div class="row">
-          <div class="field"><label>Mask starts (s, comma-sep)</label><input type="text" data-p="inpaint_mask_starts" placeholder="8"></div>
-          <div class="field"><label>Mask ends (s, comma-sep)</label><input type="text" data-p="inpaint_mask_ends" placeholder="16"></div>
-        </div>
-        <p class="note">Regenerates the masked region(s); starts and ends must have equal counts. For continuation, set start = the clip's length and a longer duration.</p>
-      </div>
-
-      <details class="adv">
-        <summary>advanced</summary>
-        <div class="field"><label>Negative prompt</label>
-          <input type="text" data-p="negative_prompt" placeholder="e.g. vocals, distortion"></div>
-        <div class="row">
-          <div class="field"><label>CFG scale (blank = default)</label><input type="number" data-p="cfg_scale" step="0.5" placeholder="model default"></div>
-          <div class="field"><label>Batch size</label><input type="number" data-p="batch_size" min="1" placeholder="1"></div>
-          <div class="field"><label>LoRA strength (blank = off)</label><input type="number" data-p="lora_strength" step="0.05" placeholder="off"></div>
-        </div>
-        <div class="row">
-          <div class="field"><label>Output format</label>
-            <select data-p="file_format">
-              <option>wav</option><option>flac</option><option>mp3 320k</option>
-              <option>mp3 v0</option><option>mp3 128k</option>
-              <option>m4a aac_he_v2 64k</option><option>m4a aac_he_v2 32k</option>
-            </select></div>
-          <div class="field" style="display:flex;align-items:flex-end;">
-            <label class="check"><input type="checkbox" data-p="return_spectrogram" checked> return spectrogram</label></div>
-        </div>
-      </details>`,
-    build(root){
-      const wf = seg(root,"workflow") || "text";
-      const prompt = val(root,"prompt");
-      if (!prompt && wf !== "inpaint") throw new Error("a prompt is required");
-      const p = { prompt };
-      const d  = numOpt(root,"seconds_total"); if (d!==undefined) p.seconds_total = d;
-      const st = numOpt(root,"steps");         if (st!==undefined) p.steps = st;
-      const sd = numOpt(root,"seed");          if (sd!==undefined) p.seed = sd;
-      const cf = numOpt(root,"cfg_scale");     if (cf!==undefined) p.cfg_scale = cf;
-      const bs = numOpt(root,"batch_size");    if (bs!==undefined) p.batch_size = bs;
-      const ng = val(root,"negative_prompt");  if (ng) p.negative_prompt = ng;
-      p.file_format = val(root,"file_format") || "wav";
-      p.return_spectrogram = checked(root,"return_spectrogram");
-      const lora = numOpt(root,"lora_strength"); if (lora!==undefined) p.loras = [{ strength: lora }];
-
-      const out = [];
-      if (wf === "variation") {
-        const f = getFile("init_audio"); if (!f) throw new Error("variation needs an init audio file");
-        out.push({ field:"init_audio", file:f });
-        const nl = numOpt(root,"init_noise_level"); if (nl!==undefined) p.init_noise_level = nl;
-      } else if (wf === "inpaint") {
-        const f = getFile("inpaint_audio"); if (!f) throw new Error("inpaint needs an audio file");
-        out.push({ field:"inpaint_audio", file:f });
-        const starts = numList(val(root,"inpaint_mask_starts"));
-        const ends   = numList(val(root,"inpaint_mask_ends"));
-        if (!starts || !ends) throw new Error("inpaint needs mask starts and ends");
-        if (starts.length !== ends.length) throw new Error("mask starts and ends must have equal counts");
-        p.inpaint_mask_starts = starts; p.inpaint_mask_ends = ends;
-      }
-      return { params:p, files:out };
-    },
+window.ASS_TEST = {
+  build(root){
+    const params = JSON.parse(val(root,"__raw") || "{}"); // throws -> toasted
+    const f = getFile("audio");
+    let enc = seg(root,"encoding") || "json";
+    const field = val(root,"__field") || "audio";
+    // A file needs a multipart encoding; nudge json -> blob so the file rides along.
+    if (f && enc === "json") enc = "blob";
+    return { params, files: f ? [{field, file:f}] : [], encoding: enc };
   },
 };
-
-// Generic fallback for any verb without a bespoke form.
-function genericForm(){
-  return {
-    html: `
-      <div class="field"><label>Params (JSON, sent as the "params" field)</label>
-        <textarea data-p="__raw" placeholder='{"prompt":"..."}'>{}</textarea></div>
-      ${dropHTML("Optional input file","audio", true)}`,
-    build(root){
-      const params = JSON.parse(val(root,"__raw") || "{}"); // throws -> caught
-      const f = getFile("audio");
-      return { params, files: f ? [{field:"audio", file:f}] : [] };
-    },
-  };
-}
-
-// --- lifecycle -------------------------------------------------------------
-async function init(){
-  $("#svcname").textContent = SERVICE;
-  try {
-    const r = await fetch("/v1/backends");
-    const data = await r.json();
-    const b = (data.backends||[]).find(x => x.name === SERVICE);
-    VERB = b ? b.verb : null;
-  } catch(e) { /* leave VERB null -> generic */ }
-
-  $("#svcverb").textContent = VERB ? (VERB + " · test") : "test";
-  FORM = FORMS[VERB] || genericForm();
-  $("#form").innerHTML = FORM.html;
-  $("#formhint").textContent = FORMS[VERB]
-    ? `POST /v1/${SERVICE}/jobs — the ${VERB} verb.`
-    : `Unknown verb${VERB?" "+VERB:""}; using the raw-params form. POST /v1/${SERVICE}/jobs.`;
-  wireSegments($("#form"));
-  wireDrops($("#form"));
-  applyWorkflow($("#form"), "text"); // no-op unless the generate form is present
-  $("#submit").disabled = false;
-}
-
-$("#submit").onclick = submit;
-
-async function submit(){
-  if (polling) return;
-  let req;
-  try { req = FORM.build($("#form")); }
-  catch(e){ toast(e.message, true); return; }
-
-  const fd = new FormData();
-  fd.append("params", JSON.stringify(req.params));
-  (req.files||[]).forEach(f => fd.append(f.field, f.file, f.filename || f.file.name));
-
-  $("#resultpanel").hidden = false;
-  $("#art").innerHTML = "";
-  setStatus("submitting…", "spin");
-  $("#submit").disabled = true;
-  try {
-    const r = await fetch(`/v1/${encodeURIComponent(SERVICE)}/jobs`, { method:"POST", body:fd });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
-    await poll(body.job_id);
-  } catch(e) {
-    setStatus("submit failed: " + e.message, "err");
-    toast(e.message, true);
-    $("#submit").disabled = false;
-  }
-}
-
-function setStatus(text, kind){
-  const el = $("#status");
-  const spin = kind === "spin" ? '<span class="spin"></span>' : "";
-  el.className = "status" + (kind==="ok"?" ok":kind==="err"?" err":"");
-  el.innerHTML = spin + `<span>${esc(text)}</span>`;
-}
-
-async function poll(jobID){
-  polling = true;
-  const started = Date.now();
-  while (true) {
-    let job;
-    try {
-      const r = await fetch(`/v1/jobs/${jobID}`);
-      job = await r.json();
-      if (!r.ok) throw new Error(job.error || ("HTTP " + r.status));
-    } catch(e){ setStatus("poll failed: " + e.message, "err"); break; }
-    const secs = Math.round((Date.now()-started)/1000);
-    if (job.state === "succeeded") { setStatus(`succeeded in ${secs}s`, "ok"); renderArtifacts(jobID, job.artifacts||[]); break; }
-    if (job.state === "failed")    { setStatus("failed: " + (job.error||"unknown"), "err"); break; }
-    setStatus(`${job.state}…  ${secs}s`, "spin");
-    await new Promise(r => setTimeout(r, 1500));
-  }
-  polling = false;
-  $("#submit").disabled = false;
-}
-
-function renderArtifacts(jobID, arts){
-  const box = $("#art");
-  if (!arts.length) { box.innerHTML = '<div class="muted">Job produced no artifacts.</div>'; return; }
-  box.innerHTML = "";
-  arts.forEach(a => {
-    const url = `/v1/jobs/${jobID}/result/${encodeURIComponent(a.name)}`;
-    const ct = a.content_type || "";
-    const isAudio = ct.startsWith("audio/");
-    const isImage = ct.startsWith("image/");
-    const el = document.createElement("div");
-    el.className = "artcard";
-    el.innerHTML = `
-      <div class="arthead">
-        <span class="aname">${esc(a.name)}</span>
-        <span class="akind">${esc(a.kind || "file")}</span>
-        <span class="asize">${fmtBytes(a.bytes)}</span>
-      </div>
-      ${isAudio ? `<audio controls preload="none" src="${url}"></audio>` : ""}
-      ${isImage ? `<img src="${url}" alt="${esc(a.name)}" style="max-width:100%;border-radius:8px;display:block;margin-bottom:8px;">` : ""}
-      <a class="dl" href="${url}" download="${esc(a.name)}">↓ download ${esc(ct)}</a>`;
-    box.appendChild(el);
-  });
-}
-
-init();
 </script>
 </body>
 </html>
