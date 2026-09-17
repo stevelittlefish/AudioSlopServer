@@ -71,6 +71,34 @@ Not yet done in slice 2 (deferred — needs data we don't have):
       `max_resident = 1` there's only ever one victim. Exercise it once budgeting
       allows a fit-set of 2+.
 
+## Now — First real backend: stem-separator (Demucs)
+
+Onboarding a genuine GPU service, replacing the mock for `demucs`. The heavy
+torch path can only be tested on the GPU box (`ai.lemon.com`); everything short
+of that is done.
+
+- [x] Assess the gap: stem-separator predated ASS (old Stable Audio 3 shape). It
+      already had /health, /v1/info, /v1/separate, /v1/jobs/{id}, async
+      submit→poll→download. Missing: the `artifacts[]` shape, the `/result/{name}`
+      download path, and /park + /unpark.
+- [x] Conform the service (committed+pushed to stevelittlefish/stem-separator,
+      no back-compat aliases — the only clients are moving to ASS anyway):
+      `stems[]`→`artifacts[]` with {name, kind, content_type, bytes};
+      `/v1/jobs/{id}/stem/{name}`→`/result/{name}`; POST /park + /unpark that
+      move the Demucs weights CPU↔GPU with a mandatory empty_cache(), serialized
+      against a running separation by a GPU lock; `parked` in /health + /v1/info.
+- [x] ASS side needed zero code changes — it already expects `artifacts[]` and
+      `/result/{name}` (the mock always returned that shape). Fixed `ass.toml`
+      for real deployment though: `gpu.enabled = true` (was defaulting false!),
+      pinned `SEP_PORT`/`SEP_MODEL` via per-service env (the backend reads
+      SEP_PORT, not the generic PORT ASS injects), and mounted the weight cache.
+- [ ] **Real end-to-end on the GPU box**: build `stem-separation:local` there,
+      `./run.sh -config ass.toml`, submit a real song, confirm harvested stems +
+      that /park actually frees VRAM (`nvidia-smi`) and /unpark restores it. This
+      is the one step neither dev machine can do (no GPU). Verify the `.model`
+      attribute assumption in `separation.py:park_model` holds for the installed
+      demucs version.
+
 ## Later — The rest
 
 - [ ] Onboard remaining backends (Stable Audio 3, YuE, Whisper, aligner)

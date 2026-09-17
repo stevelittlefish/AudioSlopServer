@@ -7,6 +7,8 @@
 ram_budget_mb = 96000
 
 [gpu]
+enabled = true         # real server has a card; hand it to whichever backend is
+                       # resident. (The dev box sets this false in ass.dev.toml.)
 device = 0             # the one card ASS is allowed to monopolize
 vram_budget_mb = 24000 # card size minus headroom; covers pinned model + park tax
 context_tax_mb = 500   # VRAM a parked (alive) process holds, charged per backend
@@ -23,3 +25,9 @@ verb  = "separate"
 evict = "park"          # small enough to keep parked in RAM
 ram_reserve_mb = 1000
 idle_ttl = "0"          # never reclaim parked RAM on the big server
+shm_size_mb = 4096      # demucs wants elbow room (compose sets 4gb)
+# This backend reads SEP_PORT, not the generic PORT ASS injects, so pin it to the
+# published port. Persist the HF/torch weight cache so cold starts don't re-fetch
+# the model. (Container path /cache matches the image's HF_HOME/TORCH_HOME.)
+env     = { SEP_PORT = "5336", SEP_MODEL = "htdemucs_ft" }
+volumes = ["/srv/stem-separation/cache:/cache", "/srv/stem-separation/outputs:/app/outputs"]
