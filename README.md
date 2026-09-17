@@ -118,30 +118,49 @@ worked examples. The full option surface:
 
 `volumes` is plain config — edit `ass.toml`, restart ASS, done, no rebuild. The
 **host** side (left of the colon) is entirely yours; point a cache anywhere. The
-**container** side (right) is dictated by the *image*, not ASS: the demucs image
-sets `HF_HOME`/`TORCH_HOME=/cache`, so weights only persist if something is
-mounted at `/cache`. You can override that too by setting a different `HF_HOME`
-in `env` and mounting to match.
+**container** side (right) is dictated by the *image*, not ASS: our backend
+images put caches under `/cache` (`HF_HOME=/cache/huggingface`,
+`TORCH_HOME=/cache/torch`), so weights only persist if something is mounted at
+`/cache`. You can override that too by setting a different `HF_HOME` in `env` and
+mounting to match.
+
+**One shared cache for all services (the convention).** Every backend image
+caches under `/cache`, so point *every* service's `/cache` mount at the **same**
+host directory — `/srv/ass/cache` — rather than a per-service folder:
+
+```toml
+[services.demucs]
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/demucs:/app/outputs"]
+[services.yue]
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/yue:/app/outputs"]
+# ...same /srv/ass/cache for all N
+```
+
+That way the model weights **and the Hugging Face token** are downloaded/written
+once and shared across every backend (the HF cache dedups by repo, so shared base
+models aren't stored twice). Per-service `outputs` stay separate — or drop the
+outputs mount entirely, since ASS harvests results over HTTP.
 
 ### Secrets & the Hugging Face token
 
 ASS has no secret store, and **`ass.toml` is committed — never put a token in
 it.** Backends that need credentials get them one of two ways:
 
-1. **Pre-seed the persistent cache (recommended).** The HF token normally lives
-   at `$HF_HOME/token`, and `HF_HOME` is inside the bind-mounted cache, so drop
-   the token on the host once and it persists exactly like the weights. For
-   demucs (`HF_HOME=/cache/huggingface`, mounted from `/srv/stem-separation/cache`):
+1. **Pre-seed the shared cache (recommended).** The HF token lives at
+   `$HF_HOME/token`, and `HF_HOME` is inside the bind-mounted **shared** cache
+   (`/srv/ass/cache`), so you write it **once per host** and every service is
+   authenticated — not once per service:
 
    ```sh
-   mkdir -p /srv/stem-separation/cache/huggingface
-   printf '%s' 'hf_your_token_here' > /srv/stem-separation/cache/huggingface/token
-   chmod 600 /srv/stem-separation/cache/huggingface/token
-   # equivalently: HF_HOME=/srv/stem-separation/cache/huggingface huggingface-cli login
+   mkdir -p /srv/ass/cache/huggingface
+   printf '%s' 'hf_your_token_here' > /srv/ass/cache/huggingface/token
+   chmod 600 /srv/ass/cache/huggingface/token
+   # equivalently: HF_HOME=/srv/ass/cache/huggingface huggingface-cli login
    ```
 
-   The container sees it at `/cache/huggingface/token` and is authenticated. It
-   survives container recreation and image updates — write it once per host.
+   Every backend sees it at `/cache/huggingface/token` and is authenticated. It
+   survives container recreation and image updates — write it once, for all N
+   services.
 
 2. **Env var**, for gated models: set `HF_TOKEN` in the service's `env`. Only do
    this if your `ass.toml` is a local, uncommitted copy — otherwise the token

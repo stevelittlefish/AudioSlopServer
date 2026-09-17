@@ -31,7 +31,11 @@ ram_reserve_mb = 1000
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 4096      # demucs wants elbow room (compose sets 4gb)
 # This backend reads SEP_PORT, not the generic PORT ASS injects, so pin it to the
-# published port. Persist the HF/torch weight cache so cold starts don't re-fetch
-# the model. (Container path /cache matches the image's HF_HOME/TORCH_HOME.)
+# published port.
 env     = { SEP_PORT = "5336", SEP_MODEL = "htdemucs_ft" }
-volumes = ["/srv/stem-separation/cache:/cache", "/srv/stem-separation/outputs:/app/outputs"]
+# Shared model cache convention (see README > Configuration and CLAUDE.md): EVERY
+# service mounts the same /srv/ass/cache to /cache, so the HF/torch weights and
+# the HF token are downloaded/written once and shared across all backends. The
+# container path /cache matches the image's HF_HOME/TORCH_HOME. Outputs stay
+# per-service (job scratch; ASS harvests results over HTTP anyway).
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/demucs:/app/outputs"]

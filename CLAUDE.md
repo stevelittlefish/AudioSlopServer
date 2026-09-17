@@ -260,6 +260,29 @@ maps stem-separator's `stems[]` onto `artifacts[]` — but the goal is one shape
   can). `park`: `model.to('cpu'); torch.cuda.empty_cache()`. `unpark`: back to
   cuda. `empty_cache()` is mandatory or VRAM never actually frees.
 
+### Backend image convention: one shared model cache under `/cache`
+
+We fork every backend, so we get to standardise where they cache weights. **Every
+ASS backend image puts its caches under `/cache`** — `HF_HOME=/cache/huggingface`,
+`TORCH_HOME=/cache/torch` — and **every service mounts the *same* shared host
+directory to `/cache`** (`/srv/ass/cache:/cache`, repeated for all N services in
+`ass.toml`).
+
+Why one shared folder, not one per service:
+
+- **The Hugging Face token is written once.** It lives at `$HF_HOME/token`, so a
+  single shared cache means one token file authenticates all N backends — not ten
+  copies to maintain. Never put the token in `ass.toml` (it's committed); seed it
+  into the shared cache on the host once (`/srv/ass/cache/huggingface/token`).
+- **Weights are deduplicated.** The HF cache is content-addressed by repo/rev, so
+  backends that share a base model share the bytes — which matters on a
+  disk-/RAM-constrained box.
+- Safe to share across containers: `huggingface_hub` file-locks downloads, and
+  ASS mostly runs one model at a time anyway.
+
+Per-service outputs (job scratch, `/app/outputs`) stay separate, or are dropped
+entirely — ASS harvests results over HTTP, so an outputs mount is optional.
+
 ### Jobs produce a set of named, typed artifacts
 
 A job is **not** "a WAV". It yields zero-to-many **artifacts**, because DEMUCS

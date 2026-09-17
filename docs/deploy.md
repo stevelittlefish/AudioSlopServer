@@ -116,8 +116,9 @@ docker rm -f ass-demucs        # ASS's backend container (ASS names it ass-<serv
 
 ASS doesn't use a backend's own compose file, but it **replicates the same bind
 mounts** from `ass.toml`'s per-service `volumes` (→ docker `HostConfig.Binds`).
-For demucs that's `/srv/stem-separation/cache:/cache`, matching the image's
-`HF_HOME`/`TORCH_HOME`.
+Every backend mounts the **one shared cache** `/srv/ass/cache:/cache`, matching
+the image's `HF_HOME`/`TORCH_HOME` (see the cache convention in CLAUDE.md and the
+README Configuration section).
 
 Because the weight cache lives on the **host**, not in the container or image:
 
@@ -125,17 +126,19 @@ Because the weight cache lives on the **host**, not in the container or image:
   re-mounts the same host dir — cache intact, **no re-download**.
 - Pulling a new image version doesn't touch the host dir; weights are keyed by
   model name, so any image version finds them.
-- The only download that ever happens is the **first** job on a **fresh host**.
+- Because the cache is **shared across all services**, a model (or the HF token)
+  fetched by one backend is already there for the next.
+- The only download that ever happens is the **first** time on a **fresh host**.
 
-Don't wipe `/srv/stem-separation` on the box. Nothing to pre-create — Docker
-makes the source dir on first run.
+Don't wipe `/srv/ass/cache` on the box. Nothing to pre-create — Docker makes the
+source dir on first run.
 
 ## Notes / gotchas
 
 - **Bare-binary alternative** (no ASS image): `./run.sh -config ass.toml` if Go is
   installed on the host. Same behaviour; the Docker path is preferred for deploy.
 - **First job is slow**: Demucs fetches `htdemucs_ft` from HuggingFace on first
-  use. `ass.toml` mounts `/srv/stem-separation/cache` so it's a one-time cost;
+  use. `ass.toml` mounts the shared `/srv/ass/cache` so it's a one-time cost;
   make sure that host dir is writable.
 - **A real swap** (evict-one/load-the-other on the actual GPU) needs a *second*
   real backend in `ass.toml`. Until then this proves the single-backend vertical
