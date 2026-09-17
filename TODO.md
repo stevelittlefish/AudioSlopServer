@@ -105,7 +105,11 @@ of that is done.
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only
 - [ ] Auth (backends already support an API key; decide if ASS fronts it)
-- [ ] Real weight-size measurements → concrete budget defaults
+- [ ] Real weight-size measurements → concrete budget defaults. **Started** —
+      see [docs/measurements.md](docs/measurements.md). First data (RTX 4080 /
+      16GB box `ai2.lemon.com`): ~0.39GB VRAM baseline with everything off;
+      demucs `htdemucs_ft` ~0.5GB resident, ~1.6GB peak. Demucs is small. Still
+      need: measure the real parked context tax, and other models.
 - [ ] **Smarter eviction than "evict on count."** The strong case: a small
       service (tiny VRAM footprint) shouldn't be evicted at all just because a
       different model wants the card — it can ride along. Once eviction is
