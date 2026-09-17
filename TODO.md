@@ -143,6 +143,63 @@ done.
 - [ ] **Measure** SA3's resident + parked VRAM and RAM footprint → replace the
       guessed `ram_reserve_mb = 8000` with real numbers (docs/measurements.md).
 
+## Now — Slice 3: the web console
+
+A small server-rendered web UI for the humans running ASS. Two jobs: an **admin
+panel** to watch and drive backends by hand, and a **generic test page** per
+service to fire real jobs from the browser (replacing the mismatched per-service
+Gradio apps). Makes testing every current and future backend trivial.
+
+**Philosophy guardrails (CLAUDE.md rules 1 & 4):** no SPA, no framework, no build
+step. Go `html/template` renders server-side HTML; a little vanilla JS does the
+polling and file upload. No JS on the *server*. One URL per page (`/admin`,
+`/test/{service}`). No npm in committed server code.
+
+Split so the useful server-side half lands even if the UI drags:
+
+### Part A — operator control endpoints (useful with curl alone)
+
+- [ ] **On-demand park/unpark/stop endpoints.** Today park/stop only fire from
+      the arbiter during a swap. Add operator-triggered actions:
+      `POST /v1/backends/{service}/park`, `/unpark`, `/stop`, and
+      `POST /v1/backends/unload-all` (evict everything, hand the GPU back).
+- [ ] **Route them THROUGH the arbiter, not around it.** An operator "stop" must
+      respect the same per-job **leases** the arbiter uses — never yank a backend
+      out from under a running job. Decide the semantics: refuse while a lease is
+      held, or queue the action until the lease releases (lean: refuse with a
+      clear 409 + which job holds it; simplest and least surprising).
+- [ ] **Auth / bind story.** These endpoints (and the console) can free/kill GPU
+      work from a browser. Add a `[web]` config table: `enabled` (default off?),
+      bind address (default localhost), optional shared secret. Nudges the
+      deferred "Later" auth decision up — at minimum don't expose destructive
+      buttons on 0.0.0.0 unauthenticated. Decide before Part B ships.
+
+### Part B — the admin panel
+
+- [ ] `GET /admin` — server-rendered page listing every backend from the same
+      data as `GET /v1/backends`: state (pinned/parked/sleeping/stopped), queue
+      depth, last-used, VRAM/RAM, lease count.
+- [ ] Buttons wired to the Part A endpoints: park / unpark / stop per backend,
+      plus the **unload-all** button. Vanilla JS POSTs then refreshes the row.
+- [ ] Auto-refresh the status (poll `/v1/backends` every few seconds; SSE later
+      if it's worth it — poll is fine to start).
+
+### Part C — the per-service test page
+
+- [ ] `GET /test/{service}` — a **generic** page driven by the shared job
+      envelope: pick/enter params, upload input files where relevant, submit
+      `POST /v1/{service}/jobs`, poll `GET /v1/jobs/{id}`, then list the
+      `artifacts[]` with inline `<audio>` players (for audio/*) and download
+      links for the rest. Built ONCE, works for every backend.
+- [ ] Per-service field hints on top of the generic form (demucs: mode/shifts;
+      stableaudio: prompt/seconds_total/steps/…). Source these from each
+      backend's `GET /v1/info` where possible so it stays data-driven rather than
+      hardcoded per service.
+- [ ] Index page (`/`) linking the admin panel + every service's test page.
+
+Build generic-first (one test page for all services), add per-service polish
+after. Do Part A first — it's independently useful and unblocks B and C.
+
 ## Later — The rest
 
 - [ ] Onboard remaining backends (YuE, Whisper, aligner)

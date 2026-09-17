@@ -21,6 +21,24 @@ ASS runs all of these disparate audio services on a **single GPU**, swapping mod
 
 No multibillionaire budget required.
 
+### The Web Console (planned)
+
+ASS is API-first, but it will also ship a small, no-nonsense **web console** for
+the humans who run it:
+
+- **An admin panel** — see every backend's live state (pinned / parked /
+  sleeping / stopped), its queue depth and last-used time, and drive it by hand:
+  park, unpark, stop, or an **"unload everything"** button to hand the whole GPU
+  back at once.
+- **A test page per service** — submit a real job, watch it run, and play or
+  download the artifacts, straight from the browser. One honest replacement for
+  the ten mismatched Gradio apps these AI services normally drag along — because
+  every ASS backend speaks the same job envelope, the test harness is built
+  once and every service gets a page for free.
+
+No SPA, no framework, no build step (see the Philosophy): plain server-rendered
+HTML with a sprinkle of vanilla JS, one URL per page. See [TODO.md](TODO.md).
+
 ## Quickstart
 
 On a GPU host with **Docker** + **nvidia-container-toolkit**, GPU 0 free:
