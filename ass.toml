@@ -104,7 +104,17 @@ shm_size_mb = 8192      # generation wants elbow room
 # weights land in the shared cache and persist. Not a new mount — /cache is
 # already mounted below. (HF_HOME=/cache/huggingface still covers the transformers
 # bits — tokenizers, the Qwen text-encoder — which DO honor the hub cache.)
-env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api", ACESTEP_CHECKPOINTS_DIR = "/cache/acestep/checkpoints" }
+# The DiT + LM defaults (acestep-v15-xl-turbo + acestep-5Hz-lm-1.7B) are now
+# baked into the image, so they're not repeated here. What IS deployment-specific
+# and replicates the old known-good box:
+#   ACESTEP_INIT_LLM=true      - load the planner at startup (needed for thinking)
+#   ACESTEP_LM_BACKEND=pt       - NOT vllm: pt offloads the planner to CPU between
+#                                 steps instead of greedily pinning VRAM, so the
+#                                 card can be shared/parked.
+#   ACESTEP_OFFLOAD_TO_CPU=true, ACESTEP_LM_OFFLOAD_TO_CPU=true - keep VAE/text-
+#                                 encoder + LM in CPU RAM except when in use. ~1s
+#                                 per render; matches what ran clean on the 3090.
+env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api", ACESTEP_CHECKPOINTS_DIR = "/cache/acestep/checkpoints", ACESTEP_INIT_LLM = "true", ACESTEP_LM_BACKEND = "pt", ACESTEP_OFFLOAD_TO_CPU = "true", ACESTEP_LM_OFFLOAD_TO_CPU = "true" }
 # Shared /cache convention, same as every other backend: the DiT + LM + VAE load
 # from the HF hub cache under HF_HOME=/cache/huggingface (models--ACE-Step--*), so
 # they live in the one shared cache and dedup/authenticate via the token already
