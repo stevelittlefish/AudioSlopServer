@@ -29,6 +29,17 @@ model loaded, idle. "Peak" = during active inference.
 |---|---|---|---|---|
 | stem-separator | `htdemucs_ft` | ~0.5GB (0.9GB total − 0.39 baseline) | ~1.6GB (peaked just under 2GB total) | `ai2`, RTX 4080 |
 
+### Lazy VRAM load (nvtop-confirmed)
+
+demucs uses **zero VRAM until its first request** — the container starts, the
+model object is built, but demucs defers the actual weight load onto CUDA until
+the first `separate` call. On nvtop: VRAM flat at 0 while idle, steps up to a
+resident floor on the first job, then stays there; GPU compute spikes per job.
+
+Consequence for the arbiter/budget: a freshly-started ("pinned") backend costs
+~0 VRAM until it actually runs a job. Budget against the *post-first-use*
+resident + peak figures, not container start.
+
 ### What this tells us
 
 - **Demucs is small.** Half a gig resident, under 2GB even mid-separation. On a

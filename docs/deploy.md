@@ -112,6 +112,24 @@ docker compose down            # stops ASS
 docker rm -f ass-demucs        # ASS's backend container (ASS names it ass-<service>)
 ```
 
+## Model weights persist across updates (no re-downloads)
+
+ASS doesn't use a backend's own compose file, but it **replicates the same bind
+mounts** from `ass.toml`'s per-service `volumes` (→ docker `HostConfig.Binds`).
+For demucs that's `/srv/stem-separation/cache:/cache`, matching the image's
+`HF_HOME`/`TORCH_HOME`.
+
+Because the weight cache lives on the **host**, not in the container or image:
+
+- Recreating the container (image update, `stop`-eviction restart, config change)
+  re-mounts the same host dir — cache intact, **no re-download**.
+- Pulling a new image version doesn't touch the host dir; weights are keyed by
+  model name, so any image version finds them.
+- The only download that ever happens is the **first** job on a **fresh host**.
+
+Don't wipe `/srv/stem-separation` on the box. Nothing to pre-create — Docker
+makes the source dir on first run.
+
 ## Notes / gotchas
 
 - **Bare-binary alternative** (no ASS image): `./run.sh -config ass.toml` if Go is
