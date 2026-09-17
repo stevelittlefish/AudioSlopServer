@@ -7,11 +7,12 @@ your life.
 (Also the closest thing Claude has to long-term memory across sessions, so keep
 it honest — if it's done, tick it; if it's abandoned, say so.)
 
-> ⚠️ **FIX NOW:** [`FIXNOW-cache-and-dockerfiles.md`](FIXNOW-cache-and-dockerfiles.md)
-> — a focused, self-contained work order to make caching uniform across all
-> services (per-service subdir + one shared HF token), fix the slow Docker builds
-> (deps-before-source), make SA3 report weight downloads, and lock ACE-Step's
-> defaults to the old compose. Do this before more feature work.
+> ✅ **FIXNOW code done** — all four repos committed + pushed:
+> [`FIXNOW-cache-and-dockerfiles.md`](FIXNOW-cache-and-dockerfiles.md) (per-service
+> cache + one shared HF token, deps-before-source Dockerfiles, SA3 announces its
+> weight download, ACE-Step defaults verified). **Remaining human steps:** cut the
+> three fork releases (`make_release.sh v1.1.0 …`) and pull/smoke-test on the box —
+> the full runbook is in [`DEPLOY.md`](DEPLOY.md).
 
 ## Done — Spec
 

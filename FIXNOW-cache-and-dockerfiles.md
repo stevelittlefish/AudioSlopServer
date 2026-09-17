@@ -73,9 +73,9 @@ say "every service mounts the same /cache … token written once at $HF_HOME/tok
 — update to the `HF_TOKEN_PATH` scheme above). The bind mount stays
 `/srv/ass/cache:/cache` for every service — only the subdirs differ.
 
-- [ ] ass.toml env updated for all three services
-- [ ] comment block rewritten
-- [ ] `go test ./internal/config/` green (it parses/validates ass.toml)
+- [x] ass.toml env updated for all three services
+- [x] comment block rewritten
+- [x] `go test ./internal/config/` green (it parses/validates ass.toml)
 
 ### 2. Dockerfiles — deps before source (all three forks)
 
@@ -90,11 +90,13 @@ COPY . /app/                           # source — a tiny layer
 ```
 
 Do this for:
-- [ ] **ACE-Step** (`references/ACE-Step-1.5-inference-server/Dockerfile`) — uses
-      `uv sync --frozen`; copy `pyproject.toml` + `uv.lock` first.
-- [ ] **Stable Audio 3** (`~/git/stable-audio-3-docker/Dockerfile`) — check its
-      installer (pip/uv) and copy its manifest(s) first.
-- [ ] **stem-separator / demucs** (`~/git/stem-separator/Dockerfile`) — same.
+- [x] **ACE-Step** (`references/ACE-Step-1.5-inference-server/Dockerfile`) — was the
+      real offender. Now copies `pyproject.toml` + `uv.lock` + the `nano-vllm` path
+      dep first, `uv sync --no-install-project`, THEN source + a final project sync.
+- [x] **Stable Audio 3** (`~/git/stable-audio-3-docker/Dockerfile`) — already did
+      deps-before-source (manifests + flash-attn wheel, then `COPY .`). No change needed.
+- [x] **stem-separator / demucs** (`~/git/stem-separator/Dockerfile`) — already did
+      deps-before-source (torch + requirements.txt, then `COPY .`). No change needed.
 
 Costs one more big build each (the deps layer changes once), then every future
 source change pushes/pulls seconds. Verify the build still succeeds; if a
@@ -103,25 +105,26 @@ step (may need `README.md` or a `src/` stub — adjust per repo).
 
 While in each Dockerfile, make them **logical/consistent** (the "dockerfiles are
 logical" ask):
-- [ ] Sane, documented `HF_HOME`/`TORCH_HOME` defaults (generic, e.g.
-      `/cache/huggingface`; ASS overrides per-service — say so in a comment).
-- [ ] `EXPOSE` matches the real serving port (ACE-Step is 2766 now, not 8001).
-- [ ] Drop dead ENV / stale mount comments (e.g. ACE-Step's old
-      `/app/checkpoints` run-example, `/root/.cache/huggingface` leftovers).
+- [x] Sane, documented `HF_HOME`/`TORCH_HOME` defaults (generic `/cache/huggingface`;
+      commented as ASS-overridden per-service). All three now also default
+      `HF_TOKEN_PATH=/cache/hf-token` (the one shared token).
+- [x] `EXPOSE` matches the real serving port (ACE-Step `EXPOSE 7860 2766` — 2766 is
+      the API port; SA3 5335; stem-separator 5336). All correct.
+- [x] Dropped dead ENV / stale mount comments (ACE-Step's `/app/checkpoints` +
+      `/root/.cache/huggingface` run-examples and mkdir, rewritten HF comment).
 
 ### 3. Stable Audio 3 — announce weight downloads, download on startup
 
 Symptom: on first run SA3 appears to hang because it downloads a multi-GB
 checkpoint lazily (on first inference) with no log output.
 
-- [ ] Find where SA3 loads/downloads its model (likely `run_api.py` /
-      whatever `from_pretrained`/`snapshot_download` it calls; search the repo).
-- [ ] Move the download/load to **startup** (before the server reports ready /
-      before `/health` returns 200), not first inference.
-- [ ] Add clear log lines around it: e.g. `"[startup] downloading weights (…) —
-      this can take several minutes on first run"` and `"[startup] weights ready"`.
-      Prefer enabling HF's own progress output over silence.
-- [ ] Sarcasm welcome in the log copy (CLAUDE.md), but it must be *informative*.
+- [x] Found it: `run_api.py` calls `StableAudioModel.from_pretrained(args.model)`.
+- [x] Already at **startup** — the load runs before `uvicorn.run`, so `/health`
+      only serves once weights are ready. The problem was silence, not timing.
+- [x] Added clear log lines: a "downloading multi-GB, NOT hung, grab a coffee" line
+      before the load and a "weights ready" line after; stop suppressing HF's own
+      progress bars (`HF_HUB_DISABLE_PROGRESS_BARS` popped).
+- [x] Sarcasm present and informative (CLAUDE.md).
 
 This is a fork change → new SA3 release after.
 
@@ -141,24 +144,22 @@ Already committed to the fork + ass.toml:
 - [x] Port default 2766 (0xACE), not 8001.
 
 Verify / decide:
-- [ ] **DCW**: old compose forced `ACESTEP_DCW_ENABLED=true` via a local patch to
-      `inference.py`; our upstream merge dropped that patch for the per-model
-      default (turbo → DCW on). Confirm turbo's resolved default is ON (matches
-      old behaviour). Non-turbo staying off is correct (issue #1259).
-- [ ] **API key**: old compose set `ACESTEP_API_KEY=qwe123` for LAN auth. ASS
-      reaches the backend on a private path, so **omit it** (no auth between ASS
-      and its backend). Note this decision; don't add the key.
-- [ ] **Offload under ASS**: old box needed offload because it ran 3 services
-      concurrently. Under ASS only one backend is resident at a time, so ACE-Step
-      owns the whole card and offload may be unnecessary (xl-turbo ~9GB + 1.7B LM
-      fits a 3090). We kept it for known-good parity (~1s/render). Once it runs
-      on the box, consider dropping offload for speed — measure first.
+- [x] **DCW**: confirmed. `inference.py:156-162` resolves DCW per-model — enabled
+      for Turbo, disabled for non-Turbo. Turbo is our default DiT, so DCW is ON =
+      old behaviour. The old blanket `ACESTEP_DCW_ENABLED` patch is correctly gone.
+- [x] **API key**: decided — OMIT. ASS reaches the backend on a private path; no
+      auth between ASS and its backend. No `ACESTEP_API_KEY` added to ass.toml.
+- [x] **Offload under ASS**: kept ON for known-good 3090 parity (~1s/render). Under
+      ASS only one backend is resident at a time, so ACE-Step owns the whole card
+      and offload may be unnecessary (xl-turbo ~9GB + 1.7B LM fits a 3090). Once it
+      runs on the box, consider dropping offload for speed — measure first. Deferred,
+      not blocking; the reasoning is already noted in ass.toml.
 
 ### 5. One shared token + first-run smoke test
 
-- [ ] Document (README "Configuration") the token step: `echo <token> >
-      /srv/ass/cache/hf-token` once, host-side. Update any existing note that
-      says `…/huggingface/token`.
+- [x] Documented (README "Configuration") the token step: write it once to
+      `/srv/ass/cache/hf-token`, host-side, read by every service via `HF_TOKEN_PATH`.
+      Old `…/huggingface/token` note replaced.
 - [ ] After the three releases: on the box, delete `/srv/ass/cache/*` model data
       if you want a clean slate (weights are disposable), restart ASS, and
       confirm each service downloads into its OWN `/cache/<service>/…` and
@@ -168,15 +169,19 @@ Verify / decide:
 
 ## Release checklist (the one final slow build per service)
 
-Each fork change needs a rebuilt image via its `make_release.sh` (cuts a `v*`
-tag → GHCR). Order doesn't matter; do all three, then pull on the box.
+All code changes are committed + pushed to `main` on every fork (current tags all
+v1.0.0). Cutting the tag fires each repo's CI, which does the slow rebuild and
+publishes to GHCR — no GPU needed for the build. **These three tag pushes are the
+only thing left for a human (the release classifier blocked me from cutting them):**
 
-- [ ] ACE-Step: `references/ACE-Step-1.5-inference-server/make_release.sh vX.Y.Z "…"`
-- [ ] Stable Audio 3: `~/git/stable-audio-3-docker/make_release.sh vX.Y.Z "…"`
-- [ ] stem-separator: `~/git/stem-separator/make_release.sh vX.Y.Z "…"`
-- [ ] `ass.toml` committed + pushed (ASS-side, no rebuild)
+- [ ] ACE-Step: `references/ACE-Step-1.5-inference-server/make_release.sh v1.1.0 "Fast deps-before-source Dockerfile; per-service cache + shared HF_TOKEN_PATH"`
+- [ ] Stable Audio 3: `~/git/stable-audio-3-docker/make_release.sh v1.1.0 "Announce weight download at startup; HF_TOKEN_PATH"`
+- [ ] stem-separator: `~/git/stem-separator/make_release.sh v1.1.0 "HF_TOKEN_PATH default"`
+- [x] `ass.toml` committed + pushed (ASS-side, no rebuild)
 - [ ] On the box: `git pull`, `docker pull …:latest` ×3, seed `/cache/hf-token`,
       restart ASS, smoke-test each service's test page (`/test/<service>`).
+
+See **DEPLOY.md** for the full copy-paste rebuild + deploy runbook.
 
 ## Ground rules (CLAUDE.md, don't forget)
 

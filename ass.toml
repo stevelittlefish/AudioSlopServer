@@ -45,12 +45,18 @@ ram_reserve_mb = 1000
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 4096      # demucs wants elbow room (compose sets 4gb)
 # This backend reads SEP_PORT, not the generic PORT ASS injects, so pin it to the
-# published port.
-env     = { SEP_PORT = "5336", SEP_MODEL = "htdemucs_ft" }
-# Shared model cache convention (see README > Configuration and CLAUDE.md): EVERY
-# service mounts the same /srv/ass/cache to /cache, so the HF/torch weights and
-# the HF token are downloaded/written once and shared across all backends. The
-# container path /cache matches the image's HF_HOME/TORCH_HOME. Outputs stay
+# published port. HF_HOME/TORCH_HOME point at this service's OWN subdir under the
+# shared /cache mount (see the per-service cache convention below); HF_TOKEN_PATH
+# points every service at the ONE shared token file.
+env     = { SEP_PORT = "5336", SEP_MODEL = "htdemucs_ft", HF_HOME = "/cache/demucs/huggingface", TORCH_HOME = "/cache/demucs/torch", HF_TOKEN_PATH = "/cache/hf-token" }
+# Per-service cache convention (see README > Configuration and CLAUDE.md): EVERY
+# service mounts the same /srv/ass/cache to /cache, but each owns a private subdir
+# (/cache/demucs, /cache/stableaudio, /cache/acestep) so its weights are one
+# deletable folder — `rm -rf /cache/<service>` and it re-downloads. These backends
+# share no base weights, so a shared HF cache buys ~nothing and its content-addressed
+# blobs make selective deletion error-prone; per-service wins. The ONE thing that
+# IS shared is the HF token: a single file at /cache/hf-token, pointed at by every
+# service's HF_TOKEN_PATH (never committed — seed it on the host once). Outputs stay
 # per-service (job scratch; ASS harvests results over HTTP anyway).
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/demucs:/app/outputs"]
 
@@ -68,9 +74,11 @@ ram_reserve_mb = 8000   # rough parked-in-RAM cost of the medium model; UNMEASUR
                         # — refine once we run it on the box (see docs/measurements.md).
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 8192      # SA3 wants elbow room (its compose sets 8gb)
-# The gated weights (stabilityai/stable-audio-3-medium) authenticate via the HF
-# token in the shared cache (/srv/ass/cache/huggingface/token) — never in this
-# committed file. The image's CMD already loads `--model medium`.
+# The gated weights (stabilityai/stable-audio-3-medium) authenticate via the ONE
+# shared HF token at /cache/hf-token (HF_TOKEN_PATH below) — never in this committed
+# file. HF_HOME/TORCH_HOME land in this service's own /cache/stableaudio subdir. The
+# image's CMD already loads `--model medium`.
+env     = { HF_HOME = "/cache/stableaudio/huggingface", TORCH_HOME = "/cache/stableaudio/torch", HF_TOKEN_PATH = "/cache/hf-token" }
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs"]
 
 [services.acestep]
@@ -100,10 +108,10 @@ shm_size_mb = 8192      # generation wants elbow room
 # ACESTEP_CHECKPOINTS_DIR: ACE-Step's DiT/VAE loader does NOT use the HF hub
 # cache (HF_HOME) — it snapshot_downloads into a flat `checkpoints/` local_dir,
 # which defaults to /app/checkpoints (unmounted → wiped every restart → it
-# re-downloads GBs on every boot). Point it inside the shared /cache mount so the
-# weights land in the shared cache and persist. Not a new mount — /cache is
-# already mounted below. (HF_HOME=/cache/huggingface still covers the transformers
-# bits — tokenizers, the Qwen text-encoder — which DO honor the hub cache.)
+# re-downloads GBs on every boot). Point it inside this service's own /cache subdir
+# so the weights land in the per-service cache and persist. Not a new mount — /cache
+# is already mounted below. (HF_HOME=/cache/acestep/huggingface still covers the
+# transformers bits — tokenizers, the Qwen text-encoder — which DO honor the hub cache.)
 # The DiT + LM defaults (acestep-v15-xl-turbo + acestep-5Hz-lm-1.7B) are now
 # baked into the image, so they're not repeated here. What IS deployment-specific
 # and replicates the old known-good box:
@@ -114,10 +122,11 @@ shm_size_mb = 8192      # generation wants elbow room
 #   ACESTEP_OFFLOAD_TO_CPU=true, ACESTEP_LM_OFFLOAD_TO_CPU=true - keep VAE/text-
 #                                 encoder + LM in CPU RAM except when in use. ~1s
 #                                 per render; matches what ran clean on the 3090.
-env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api", ACESTEP_CHECKPOINTS_DIR = "/cache/acestep/checkpoints", ACESTEP_INIT_LLM = "true", ACESTEP_LM_BACKEND = "pt", ACESTEP_OFFLOAD_TO_CPU = "true", ACESTEP_LM_OFFLOAD_TO_CPU = "true" }
-# Shared /cache convention, same as every other backend: the DiT + LM + VAE load
-# from the HF hub cache under HF_HOME=/cache/huggingface (models--ACE-Step--*), so
-# they live in the one shared cache and dedup/authenticate via the token already
-# there (/srv/ass/cache/huggingface/token). No bespoke /app/checkpoints mount —
-# nothing durable lands outside /cache.
+env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api", HF_HOME = "/cache/acestep/huggingface", TORCH_HOME = "/cache/acestep/torch", ACESTEP_CHECKPOINTS_DIR = "/cache/acestep/checkpoints", HF_TOKEN_PATH = "/cache/hf-token", ACESTEP_INIT_LLM = "true", ACESTEP_LM_BACKEND = "pt", ACESTEP_OFFLOAD_TO_CPU = "true", ACESTEP_LM_OFFLOAD_TO_CPU = "true" }
+# Per-service /cache convention, same as every other backend: the transformers bits
+# (tokenizer, Qwen text-encoder) load from HF_HOME=/cache/acestep/huggingface and the
+# DiT/VAE/LM snapshot into /cache/acestep/checkpoints — all under this service's own
+# deletable subdir, authenticating via the ONE shared token at /cache/hf-token
+# (HF_TOKEN_PATH). No bespoke /app/checkpoints mount — nothing durable lands outside
+# /cache.
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/acestep:/app/outputs"]
