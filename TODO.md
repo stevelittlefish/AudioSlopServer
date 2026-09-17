@@ -248,6 +248,22 @@ after. Do Part A first — it's independently useful and unblocks B and C.
 
 ## Later — The rest
 
+### Web console polish
+
+- [ ] **Custom audio widget with a waveform**, in the style of SlopBC's player —
+      replace the stock `<audio controls>` on artifact cards with a proper
+      waveform view + transport. Keep it self-contained (no external JS lib /
+      CDN, rule 5): render the waveform ourselves from the decoded PCM
+      (WebAudio `decodeAudioData` → downsample peaks → `<canvas>`), with
+      play/scrub over the same buffer. Look at SlopBC's widget for the visual
+      style to match. Applies to every service's test page.
+- [x] **Show the spectrogram image inline** instead of just a download link —
+      DONE (renderArtifacts renders `<img>` for any `image/*` artifact). Left
+      here as the anchor for any follow-up (click-to-zoom / lightbox, sizing
+      controls) if we want it.
+
+### Backends & orchestration
+
 - [ ] Onboard remaining backends (YuE, Whisper, aligner)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only
