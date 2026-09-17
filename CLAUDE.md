@@ -6,6 +6,23 @@ Guidance for working on this project.
 > Read it before starting work, and keep it current — across sessions it's the
 > closest thing to memory this project has.
 
+## Dev workflow (this box has NO GPU)
+
+Development and testing happen against a **mock backend**, because ASS itself
+needs no GPU and the mock speaks the whole backend contract. The real torch
+backends only get tested later on the server (`ai.lemon.com`, which has GPUs +
+128GB RAM).
+
+```sh
+./scripts/build-mockbackend.sh          # build ass-mockbackend:local (do this first)
+./run.sh -config ass.dev.toml           # run ASS against two mock backends, GPU off
+go test ./...                           # unit + integration tests (skip if no docker)
+```
+
+`ass.dev.toml` sets `gpu.enabled = false` and points two services at the mock
+image. `ass.toml` is the real-ish server example. Every commit goes **straight
+to `main` and gets pushed** (announce "Slopping it straight to main!").
+
 ## What it is
 
 ASS is a single-GPU orchestration server for multiple heavyweight audio AI
