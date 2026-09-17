@@ -50,7 +50,7 @@ func (a *API) Handler() http.Handler {
 		mux.HandleFunc("POST /v1/backends/{service}/park", a.handleParkBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/unpark", a.handleUnparkBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/stop", a.handleStopBackend)
-		web.Register(mux) // the admin console pages that drive the above
+		web.Register(mux, a.cfg) // the admin console pages that drive the above
 	} else {
 		log.Printf("[api] web console disabled (web.enabled = false) — operator controls not served")
 	}

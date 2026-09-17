@@ -133,15 +133,21 @@ done.
 - [x] ASS side: added `[services.stableaudio]` to `ass.toml` (port 5335, verb
       `generate`, evict `park`, shm 8gb, shared /cache mount). Zero ASS code
       changes — it already expects `artifacts[]` + `/result/{name}`.
-- [ ] **Cut the first release** on stable-audio-3-docker (`./make_release.sh
-      v0.1.0 "..."`) so `ghcr.io/.../stable-audio-3-docker:latest` exists to pull.
-- [ ] **Real end-to-end on the GPU box** — pull the image, run ASS, submit a
-      generate job, verify cold-start → generate → harvest → `succeeded` with the
-      right `artifacts[]`, and that `/park`+`/unpark` return clean 200s on real
-      CUDA (confirm the `model.model.to(...)` park assumption holds, as we did for
-      demucs's `.model`).
-- [ ] **Measure** SA3's resident + parked VRAM and RAM footprint → replace the
-      guessed `ram_reserve_mb = 8000` with real numbers (docs/measurements.md).
+- [x] **Cut the first release** on stable-audio-3-docker — done; GHCR has
+      `v1.0.0` / `v1.0` / `v1` / `latest` (cold CI build ~20 min).
+- [x] **Real end-to-end on the GPU box** — DONE, verified on ai.lemon.com
+      (2026-09-17). Submitted a generate job to ASS → cold start (~9 min: gated
+      weight download + flash-attn + model load) → generate (~5s) → harvest →
+      `succeeded` with the right `artifacts[]` (`output_0.wav` audio/wav +
+      `spectrogram_0.png` image/png), both served from ASS's own store. The
+      artifacts[] conform is correct. `/park` + `/unpark` returned clean 200s on
+      real CUDA — the `model.model.to('cpu')` + `empty_cache()` assumption holds,
+      no fix needed — and a second generation after the park/unpark round-trip
+      succeeded, so the model survives the CPU↔GPU bounce.
+- [ ] **Measure** SA3's resident + parked VRAM (context tax) and RAM footprint →
+      replace the guessed `ram_reserve_mb = 8000` with real numbers
+      (docs/measurements.md). Needs per-process `nvidia-smi` on the box across an
+      unpark→park (as done for demucs); can't be read over HTTP from a dev box.
 
 ## Now — Slice 3: the web console
 
@@ -210,16 +216,25 @@ viewing it live.)
 
 ### Part C — the per-service test page
 
-- [ ] `GET /test/{service}` — a **generic** page driven by the shared job
-      envelope: pick/enter params, upload input files where relevant, submit
-      `POST /v1/{service}/jobs`, poll `GET /v1/jobs/{id}`, then list the
-      `artifacts[]` with inline `<audio>` players (for audio/*) and download
-      links for the rest. Built ONCE, works for every backend.
-- [ ] Per-service field hints on top of the generic form (demucs: mode/shifts;
-      stableaudio: prompt/seconds_total/steps/…). Source these from each
-      backend's `GET /v1/info` where possible so it stays data-driven rather than
-      hardcoded per service.
-- [ ] Index page (`/`) linking the admin panel + every service's test page.
+- [x] `GET /test/{service}` — a page driven by the shared job envelope (upload,
+      submit `POST /v1/{service}/jobs`, poll `GET /v1/jobs/{id}`, then render
+      `artifacts[]` with inline `<audio>` players for audio/* + download links).
+      404s unknown services (`internal/web/web.go`); reads the backend's `verb`
+      from `/v1/backends` to pick the form. `internal/web/test.html`, styled to
+      match the admin panel. Verified end to end against the mock demucs backend
+      (drop file → two-stem → succeeded → two audio/wav stems play + download).
+- [x] Per-verb forms with a generic fallback: **separate** (mode/format/shifts/
+      overlap + drag-drop audio) fully built; **generate** (prompt/seconds/steps/
+      seed + optional audio) sketched for SA3; unknown verbs get a raw-params
+      JSON textarea + optional file, so the page is useful for any future backend.
+      (Sourcing field lists/ranges from each backend's `/v1/info` is a later
+      polish — the forms are hardcoded per verb for now.)
+- [x] Cross-links: each admin card has a `test ▸` link to its test page; the test
+      page has a `‹ admin` back link. (A dedicated index page is unnecessary — the
+      admin panel already lists everything with links.)
+
+**Part C done** for stem-separator; the generate form is ready to exercise once
+SA3 is verified on the GPU box.
 
 Build generic-first (one test page for all services), add per-service polish
 after. Do Part A first — it's independently useful and unblocks B and C.

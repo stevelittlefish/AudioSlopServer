@@ -9,20 +9,33 @@ package web
 import (
 	"embed"
 	"net/http"
+
+	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
-//go:embed admin.html
+//go:embed admin.html test.html
 var assets embed.FS
 
 // Register mounts the console routes onto mux. Called only when the web console
 // is enabled (see config.WebEnabled); the operator endpoints it drives are
-// registered separately by the api package under the same guard.
-func Register(mux *http.ServeMux) {
+// registered separately by the api package under the same guard. cfg is used to
+// 404 test pages for services that don't exist.
+func Register(mux *http.ServeMux, cfg *config.Config) {
 	admin := page("admin.html")
+	test := page("test.html")
 	// Exact root ("/{$}" matches only "/") sends people to the panel without
 	// swallowing every unmatched path into a catch-all.
 	mux.Handle("GET /{$}", http.RedirectHandler("/admin", http.StatusFound))
 	mux.Handle("GET /admin", admin)
+	// Per-service test page. The page itself reads the service from the URL and
+	// drives the same job API; here we just reject unknown services up front.
+	mux.HandleFunc("GET /test/{service}", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := cfg.Services[r.PathValue("service")]; !ok {
+			http.Error(w, "unknown service", http.StatusNotFound)
+			return
+		}
+		test.ServeHTTP(w, r)
+	})
 }
 
 // page serves one embedded HTML file as a self-contained document.

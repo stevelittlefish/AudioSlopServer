@@ -89,6 +89,8 @@
   .card .head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
   .card .name { font-size:17px; font-weight:600; letter-spacing:.01em; }
   .card .verb { font-family:var(--mono); font-size:11px; color:var(--ink-faint); border:1px solid var(--line2); padding:1px 7px; border-radius:6px; }
+  .card .testlink { font-family:var(--mono); font-size:11px; color:var(--ink-faint); }
+  .card .testlink:hover { color:var(--accent); }
 
   .badge { margin-left:auto; display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--state-c); }
   .badge .dot { width:9px; height:9px; border-radius:50%; background:var(--state-c); box-shadow:0 0 10px var(--state-c); }
@@ -182,6 +184,7 @@ function card(b) {
     <div class="head">
       <span class="name"></span>
       <span class="verb"></span>
+      <a class="testlink" title="Open the test page">test ▸</a>
       <span class="badge"><span class="dot"></span><span class="rtext"></span></span>
     </div>
     <div class="meta">
@@ -197,6 +200,7 @@ function card(b) {
     </div>`;
   el.querySelector(".name").textContent = b.name;
   el.querySelector(".verb").textContent = b.verb || "—";
+  el.querySelector(".testlink").href = "/test/" + encodeURIComponent(b.name);
   el.querySelector(".rtext").textContent = b.residency;
   el.querySelector(".img").textContent = shortImage(b.image);
   el.querySelector(".img").title = b.image || "";
