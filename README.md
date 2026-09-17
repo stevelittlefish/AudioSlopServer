@@ -21,6 +21,38 @@ ASS runs all of these disparate audio services on a **single GPU**, swapping mod
 
 No multibillionaire budget required.
 
+## Quickstart
+
+On a GPU host with **Docker** + **nvidia-container-toolkit**, GPU 0 free:
+
+```sh
+git clone https://github.com/stevelittlefish/AudioSlopServer.git
+cd AudioSlopServer
+
+sudo mkdir -p /srv/ass/cache /srv/ass/data   # persistent: model cache + job store
+./pull-services.sh                           # pull backend images from GHCR
+docker compose up -d --build                 # start ASS on :2645
+
+curl -s localhost:2645/health                # {"status":"ok","service":"ASS"}
+```
+
+Submit a job (ASS brings the backend up on demand, harvests the results, and
+serves them from its own store):
+
+```sh
+curl -s -F 'audio=@song.wav' -F 'params={"mode":"two-stem"}' \
+  localhost:2645/v1/demucs/jobs               # -> {"job_id":"..."}
+
+curl -s localhost:2645/v1/jobs/<job_id>       # poll until "succeeded"
+curl -o vocals.wav localhost:2645/v1/jobs/<job_id>/result/vocals
+```
+
+That's the whole loop. No GPU? Develop against mock backends instead:
+`./scripts/build-mockbackend.sh` then `./run.sh -config ass.dev.toml`. Full
+deployment detail and the park/unpark validation steps live in
+[docs/deploy.md](docs/deploy.md); every config knob is in
+[Configuration](#configuration).
+
 ## Best Practices & Guiding Philosophy
 
 We hold ourselves to the highest standards. Here they are.

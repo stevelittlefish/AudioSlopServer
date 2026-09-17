@@ -23,7 +23,10 @@ addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex)
 # --- Backends -------------------------------------------------------------
 
 [services.demucs]
-image = "stem-separation:local"
+# Published to GHCR by the stem-separator repo's release workflow. Pull it with
+# ./pull-services.sh (ASS never auto-pulls). `latest` = newest release; pin a
+# version like :v0.1.0 if you'd rather bump deliberately.
+image = "ghcr.io/stevelittlefish/stem-separator:latest"
 port  = 5336
 verb  = "separate"
 evict = "park"          # small enough to keep parked in RAM
