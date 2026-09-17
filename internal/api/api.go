@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,12 @@ func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /v1/backends", a.handleBackends)
+	// Operator controls (Slice 3, Part A): drive a backend's residency by hand.
+	// All route through the arbiter, so leases still protect in-flight jobs.
+	mux.HandleFunc("POST /v1/backends/unload-all", a.handleUnloadAll)
+	mux.HandleFunc("POST /v1/backends/{service}/park", a.handleParkBackend)
+	mux.HandleFunc("POST /v1/backends/{service}/unpark", a.handleUnparkBackend)
+	mux.HandleFunc("POST /v1/backends/{service}/stop", a.handleStopBackend)
 	mux.HandleFunc("POST /v1/{service}/jobs", a.handleSubmit)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.handleJob)
 	mux.HandleFunc("GET /v1/jobs/{id}/result", a.handleResultList)
@@ -173,6 +180,76 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		out = append(out, bv)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"backends": out})
+}
+
+// --- operator controls ----------------------------------------------------
+
+// backendOp is the shape of the arbiter's park/unpark/stop methods.
+type backendOp func(ctx context.Context, service string) error
+
+func (a *API) handleParkBackend(w http.ResponseWriter, r *http.Request) {
+	a.doBackendOp(w, r, a.arbiter.Park)
+}
+func (a *API) handleUnparkBackend(w http.ResponseWriter, r *http.Request) {
+	a.doBackendOp(w, r, a.arbiter.Unpark)
+}
+func (a *API) handleStopBackend(w http.ResponseWriter, r *http.Request) {
+	a.doBackendOp(w, r, a.arbiter.Stop)
+}
+
+// doBackendOp runs one operator action against a named backend and reports the
+// resulting residency, so the caller (or the admin panel) sees the new state.
+func (a *API) doBackendOp(w http.ResponseWriter, r *http.Request, op backendOp) {
+	service := r.PathValue("service")
+	if _, ok := a.cfg.Services[service]; !ok {
+		writeErr(w, http.StatusNotFound, "unknown service %q", service)
+		return
+	}
+	if err := op(r.Context(), service); err != nil {
+		a.writeOpErr(w, err)
+		return
+	}
+	resp := map[string]any{"status": "ok", "service": service}
+	if s, ok := a.arbiter.Snapshot()[service]; ok {
+		resp["residency"] = s.Residency
+	} else {
+		resp["residency"] = "stopped"
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (a *API) handleUnloadAll(w http.ResponseWriter, r *http.Request) {
+	res, err := a.arbiter.UnloadAll(r.Context())
+	if err != nil {
+		// A partial failure still carries what did get unloaded.
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(), "unloaded": res.Unloaded, "skipped": res.Skipped,
+		})
+		return
+	}
+	if res.Unloaded == nil {
+		res.Unloaded = []string{} // render [] not null for an empty result
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// writeOpErr maps the arbiter's typed operator errors onto HTTP status codes.
+func (a *API) writeOpErr(w http.ResponseWriter, err error) {
+	var leaseErr *arbiter.LeaseHeldError
+	switch {
+	case errors.As(err, &leaseErr):
+		writeErr(w, http.StatusConflict, "%v", err)
+	case errors.Is(err, arbiter.ErrNotResident),
+		errors.Is(err, arbiter.ErrNotParked),
+		errors.Is(err, arbiter.ErrGPUBusy):
+		writeErr(w, http.StatusConflict, "%v", err)
+	case errors.Is(err, arbiter.ErrParkUnsupported):
+		writeErr(w, http.StatusBadRequest, "%v", err)
+	case errors.Is(err, arbiter.ErrUnknownService):
+		writeErr(w, http.StatusNotFound, "%v", err)
+	default:
+		writeErr(w, http.StatusInternalServerError, "%v", err)
+	}
 }
 
 // --- helpers --------------------------------------------------------------

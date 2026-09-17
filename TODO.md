@@ -159,20 +159,29 @@ Split so the useful server-side half lands even if the UI drags:
 
 ### Part A — operator control endpoints (useful with curl alone)
 
-- [ ] **On-demand park/unpark/stop endpoints.** Today park/stop only fire from
-      the arbiter during a swap. Add operator-triggered actions:
+- [x] **On-demand park/unpark/stop endpoints.** Added operator-triggered actions
+      (`internal/arbiter/operator.go` + wired in `internal/api/api.go`):
       `POST /v1/backends/{service}/park`, `/unpark`, `/stop`, and
-      `POST /v1/backends/unload-all` (evict everything, hand the GPU back).
-- [ ] **Route them THROUGH the arbiter, not around it.** An operator "stop" must
-      respect the same per-job **leases** the arbiter uses — never yank a backend
-      out from under a running job. Decide the semantics: refuse while a lease is
-      held, or queue the action until the lease releases (lean: refuse with a
-      clear 409 + which job holds it; simplest and least surprising).
+      `POST /v1/backends/unload-all` (stops every idle resident, hands the GPU
+      back). Each single-backend action returns the resulting residency; typed
+      arbiter errors map to HTTP codes (unknown→404, park-unsupported→400,
+      wrong-state/GPU-busy/lease-held→409). Idempotent no-ops where sensible.
+- [x] **Route them THROUGH the arbiter, not around it.** All actions go via a
+      shared `operate()` spine that claims the single GPU swap slot (so a button
+      press can't race the arbiter's own swap) and respects **leases**: park/stop
+      of a backend with in-flight jobs is refused with a 409 + how many jobs hold
+      it (`LeaseHeldError`) — we chose refuse-with-409 over queuing (simplest,
+      least surprising). unload-all skips busy backends and reports them rather
+      than failing the whole call. Unit-tested + race-clean
+      (`operator_test.go`): park/stop/unpark, lease protection, evict-to-make-room
+      on unpark, unload-all skip/report, and the typed-error cases.
 - [ ] **Auth / bind story.** These endpoints (and the console) can free/kill GPU
       work from a browser. Add a `[web]` config table: `enabled` (default off?),
       bind address (default localhost), optional shared secret. Nudges the
       deferred "Later" auth decision up — at minimum don't expose destructive
-      buttons on 0.0.0.0 unauthenticated. Decide before Part B ships.
+      buttons on 0.0.0.0 unauthenticated. **Decide before Part B ships** — the
+      endpoints currently ride the main API on `:2645` with no auth (fine on a
+      LAN dev box; not fine facing a network).
 
 ### Part B — the admin panel
 
