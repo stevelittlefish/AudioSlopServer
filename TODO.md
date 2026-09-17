@@ -78,3 +78,12 @@ Not yet done in slice 2 (deferred — needs data we don't have):
 - [ ] SSE job streaming instead of poll-only
 - [ ] Auth (backends already support an API key; decide if ASS fronts it)
 - [ ] Real weight-size measurements → concrete budget defaults
+- [ ] **Smarter eviction than "evict on count."** The strong case: a small
+      service (tiny VRAM footprint) shouldn't be evicted at all just because a
+      different model wants the card — it can ride along. Once eviction is
+      VRAM-budget-driven (not a pin count), the arbiter should keep a **fit-set**
+      resident and only evict when the newcomer genuinely doesn't fit, preferring
+      to evict big models over small ones. Consider a per-service "sticky"/pin
+      flag so cheap always-useful backends (e.g. an aligner) stay resident
+      indefinitely. Depends on the deferred VRAM budgeting + real weight sizes
+      above.
