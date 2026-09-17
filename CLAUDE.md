@@ -23,6 +23,21 @@ go test ./...                           # unit + integration tests (skip if no d
 image. `ass.toml` is the real-ish server example. Every commit goes **straight
 to `main` and gets pushed** (announce "Slopping it straight to main!").
 
+## All durable knowledge lives in the repo
+
+The user works across **multiple computers**, and Claude's machine-local memory
+(`~/.claude/...`) does **not** travel between them. So it is useless here and
+must never be relied on. Anything that needs to survive a session — status,
+decisions, conventions, how to run things — goes into a **committed** file
+(`CLAUDE.md`, `TODO.md`, `README.md`) and gets pushed. If it isn't committed, it
+doesn't exist tomorrow. When you learn something worth keeping, write it here and
+push it, not into local memory.
+
+**No Artifacts either.** Do not publish claude.ai Artifacts — they live off in
+the cloud, not in the repo, so they don't travel or persist. If the user asks
+for a document or an HTML page, **write it as a file in a `docs/` directory and
+commit it.** Same rule, same reason: if it isn't in the repo, it doesn't exist.
+
 ## What it is
 
 ASS is a single-GPU orchestration server for multiple heavyweight audio AI
