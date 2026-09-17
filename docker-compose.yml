@@ -23,7 +23,7 @@ services:
     # ASS creates backend containers that publish their ports to the host, and on
     # the host network ASS reaches them at localhost:<port> — no shared-network,
     # container-name addressing needed (that's a later refinement). ASS's own
-    # server.addr (:8080) binds directly on the host.
+    # server.addr (:2645) binds directly on the host.
     network_mode: host
     volumes:
       # The one privilege ASS needs: talk to the host daemon to run sibling

@@ -139,7 +139,7 @@ func Load(path string) (*Config, error) {
 // confusing runtime death an hour later.
 func (c *Config) validate() error {
 	if c.Server.Addr == "" {
-		c.Server.Addr = ":8080" // a sensible default beats a mysterious :0
+		c.Server.Addr = ":2645" // 0xA55 = "ASS" in hex. Unique, memorable, ours.
 	}
 	if c.Storage.DBPath == "" {
 		c.Storage.DBPath = "data/ass.db"

@@ -43,9 +43,9 @@ From the AudioSlopServer repo root:
 ```sh
 sudo mkdir -p /srv/ass/data         # ASS's job DB + harvested artifacts land here
 docker compose up --build -d        # builds ass:local, starts it on the host network
-docker compose logs -f ass          # ASCII-art banner, then "listening on :8080"
-curl -s localhost:8080/health       # {"status":"ok","service":"ASS"}
-curl -s localhost:8080/v1/backends  # demucs, residency "stopped" (not started yet)
+docker compose logs -f ass          # ASCII-art banner, then "listening on :2645"
+curl -s localhost:2645/health       # {"status":"ok","service":"ASS"}
+curl -s localhost:2645/v1/backends  # demucs, residency "stopped" (not started yet)
 ```
 
 Why host networking: ASS creates backend containers that publish their ports to
@@ -61,19 +61,19 @@ slow), forwards the work, polls, and harvests the stems into its own store.
 ```sh
 # submit (two-stem = vocals + instrumental)
 curl -s -F 'audio=@song.wav' -F 'params={"mode":"two-stem"}' \
-  localhost:8080/v1/demucs/jobs
+  localhost:2645/v1/demucs/jobs
 # -> {"job_id":"<ASS_ID>"}
 
 # poll until succeeded (first run: allow minutes for the model download)
-curl -s localhost:8080/v1/jobs/<ASS_ID>
+curl -s localhost:2645/v1/jobs/<ASS_ID>
 
 # once "state":"succeeded", the job lists artifacts; download them from ASS's
 # OWN store (served even after the backend is later evicted)
-curl -o vocals.wav       localhost:8080/v1/jobs/<ASS_ID>/result/vocals
-curl -o instrumental.wav localhost:8080/v1/jobs/<ASS_ID>/result/no_vocals
+curl -o vocals.wav       localhost:2645/v1/jobs/<ASS_ID>/result/vocals
+curl -o instrumental.wav localhost:2645/v1/jobs/<ASS_ID>/result/no_vocals
 
 # meanwhile the backend is pinned on the card:
-curl -s localhost:8080/v1/backends   # demucs residency "pinned"
+curl -s localhost:2645/v1/backends   # demucs residency "pinned"
 nvidia-smi                            # ass-demucs holding VRAM on GPU 0
 ```
 

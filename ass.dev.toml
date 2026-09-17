@@ -8,7 +8,7 @@
 enabled = false          # this dev box has no GPU; run backends on CPU
 
 [server]
-addr = ":8080"
+addr = ":2645"         # 0xA55 = "ASS" in hex
 
 [storage]
 db_path     = "data/dev/ass.db"

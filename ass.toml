@@ -18,7 +18,7 @@ vram_budget_mb = 24000 # card size minus headroom; covers pinned model + park ta
 context_tax_mb = 500   # VRAM a parked (alive) process holds, charged per backend
 
 [server]
-addr = ":8080"         # where ASS itself listens
+addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex)
 
 # --- Backends -------------------------------------------------------------
 
