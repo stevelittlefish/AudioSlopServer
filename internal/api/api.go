@@ -42,10 +42,16 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/backends", a.handleBackends)
 	// Operator controls (Slice 3, Part A): drive a backend's residency by hand.
 	// All route through the arbiter, so leases still protect in-flight jobs.
-	mux.HandleFunc("POST /v1/backends/unload-all", a.handleUnloadAll)
-	mux.HandleFunc("POST /v1/backends/{service}/park", a.handleParkBackend)
-	mux.HandleFunc("POST /v1/backends/{service}/unpark", a.handleUnparkBackend)
-	mux.HandleFunc("POST /v1/backends/{service}/stop", a.handleStopBackend)
+	// Gated behind [web] (on by default) — these are real "free/kill the GPU"
+	// buttons and there's no auth yet, so a box that wants API-only turns them off.
+	if a.cfg.WebEnabled() {
+		mux.HandleFunc("POST /v1/backends/unload-all", a.handleUnloadAll)
+		mux.HandleFunc("POST /v1/backends/{service}/park", a.handleParkBackend)
+		mux.HandleFunc("POST /v1/backends/{service}/unpark", a.handleUnparkBackend)
+		mux.HandleFunc("POST /v1/backends/{service}/stop", a.handleStopBackend)
+	} else {
+		log.Printf("[api] web console disabled (web.enabled = false) — operator controls not served")
+	}
 	mux.HandleFunc("POST /v1/{service}/jobs", a.handleSubmit)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.handleJob)
 	mux.HandleFunc("GET /v1/jobs/{id}/result", a.handleResultList)

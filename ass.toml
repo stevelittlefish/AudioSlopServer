@@ -20,7 +20,16 @@ context_tax_mb = 400   # VRAM a parked (alive) process holds, charged per backen
                        # weights freed, CUDA context remains) — see docs/measurements.md.
 
 [server]
-addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex)
+addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex).
+                       # ":2645" binds all interfaces (0.0.0.0) — LAN-reachable.
+
+[web]
+# The human-facing web console and its operator controls (park/stop/unload-all a
+# backend by hand). On by default; it shares the [server] listener, so it's on
+# 0.0.0.0 too. There is NO auth yet — fine on a trusted LAN, so keep ASS off the
+# open internet until there is. Set enabled = false for a strictly API-only box
+# with no "free/kill the GPU" buttons exposed.
+enabled = true
 
 # --- Backends -------------------------------------------------------------
 

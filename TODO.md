@@ -175,13 +175,17 @@ Split so the useful server-side half lands even if the UI drags:
       than failing the whole call. Unit-tested + race-clean
       (`operator_test.go`): park/stop/unpark, lease protection, evict-to-make-room
       on unpark, unload-all skip/report, and the typed-error cases.
-- [ ] **Auth / bind story.** These endpoints (and the console) can free/kill GPU
-      work from a browser. Add a `[web]` config table: `enabled` (default off?),
-      bind address (default localhost), optional shared secret. Nudges the
-      deferred "Later" auth decision up — at minimum don't expose destructive
-      buttons on 0.0.0.0 unauthenticated. **Decide before Part B ships** — the
-      endpoints currently ride the main API on `:2645` with no auth (fine on a
-      LAN dev box; not fine facing a network).
+- [x] **Auth / bind story.** Decided: no one's using this yet, so keep it simple.
+      The console rides the main API listener (`:2645`, already 0.0.0.0), no auth.
+      Added a `[web]` table with `enabled` (a `*bool`, default **on** — absent
+      table = enabled); `enabled = false` drops the operator routes entirely for
+      a strictly API-only box. Documented the no-auth / keep-it-on-a-LAN caveat in
+      `ass.toml` + README. Real auth stays deferred to "Later" until someone
+      actually needs to face this at a network.
+
+**Part A done** — operator controls (park/unpark/stop/unload-all) land on `:2645`,
+lease-safe through the arbiter, gated by `[web] enabled` (default on). Useful with
+curl today; the admin panel (Part B) just needs to render + POST to them.
 
 ### Part B — the admin panel
 

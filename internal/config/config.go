@@ -17,7 +17,25 @@ type Config struct {
 	Server   Server             `toml:"server"`
 	Storage  Storage            `toml:"storage"`
 	Docker   Docker             `toml:"docker"`
+	Web      Web                `toml:"web"`
 	Services map[string]Service `toml:"services"`
+}
+
+// Web governs the human-facing web console and its operator controls (park /
+// stop / unload-all a backend by hand). It rides the same listener as the API
+// (Server.Addr), so it inherits the same 0.0.0.0 bind — there's no auth yet, so
+// it's LAN-only in spirit. On by default; flip it off on a box you'd rather keep
+// strictly API-with-no-buttons.
+type Web struct {
+	// Enabled is a *bool so an omitted [web] table means "on" (a plain bool
+	// would default to false). nil => enabled; set `enabled = false` to disable.
+	Enabled *bool `toml:"enabled"`
+}
+
+// WebEnabled reports whether the console + operator endpoints should be served.
+// Absent config = enabled.
+func (c *Config) WebEnabled() bool {
+	return c.Web.Enabled == nil || *c.Web.Enabled
 }
 
 // Storage is where ASS keeps its own state: the job database and the harvested

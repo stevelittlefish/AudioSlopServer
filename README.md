@@ -142,7 +142,8 @@ worked examples. The full option surface:
 | `gpu.vram_budget_mb` | int | — | Card size minus headroom; covers the pinned model + each parked backend's context tax. |
 | `gpu.context_tax_mb` | int | — | VRAM a parked (alive) process still holds, charged per parked backend. |
 | `gpu.max_resident` | int | `1` | How many backends may hold the GPU at once. `1` = one model on the card, the whole point. |
-| `server.addr` | string | `:2645` | Where ASS itself listens (`0xA55` = "ASS" in hex). |
+| `server.addr` | string | `:2645` | Where ASS itself listens (`0xA55` = "ASS" in hex). `:2645` binds all interfaces (0.0.0.0). |
+| `web.enabled` | bool | `true` | Serve the web console + operator controls (park/stop/unload-all by hand). Shares the `server.addr` listener; **no auth yet**, so keep ASS off the open internet. Set `false` for a strictly API-only box. |
 | `storage.db_path` | string | `data/ass.db` | The sqlite job store. |
 | `storage.results_dir` | string | `data/results` | On-disk harvested-artifact store. |
 | `docker.socket` | string | platform default | Docker daemon socket (e.g. `/var/run/docker.sock`). |
