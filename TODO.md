@@ -100,10 +100,11 @@ of that is done.
       `/park` + `/unpark` both returned clean 200s on real CUDA — the `.model`
       assumption in `separation.py:park_model` holds, no fix needed. Procedure in
       [docs/deploy.md](docs/deploy.md).
-- [ ] **Measure the parked VRAM (context tax)** — the one thing not yet captured:
-      `nvidia-smi` on the host across unpark→park→unpark. The residual VRAM while
-      parked is the real `context_tax_mb` (a guess of 500 in `ass.toml`); record
-      it in [docs/measurements.md](docs/measurements.md).
+- [x] **Measure the parked VRAM (context tax)** — DONE (ai.lemon.com, RTX 3090).
+      Per-process nvidia-smi across unpark→park: demucs drops 1018 → 354 MiB, so
+      it frees ~664 MiB of model weights and holds ~354 MiB context tax parked.
+      `ass.toml` now sets `context_tax_mb = 400` (measured + headroom); full
+      numbers in [docs/measurements.md](docs/measurements.md).
 
 ## Later — The rest
 

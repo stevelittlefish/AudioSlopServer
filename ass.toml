@@ -15,7 +15,9 @@ enabled = true         # real server has a card; hand it to whichever backend is
                        # resident. (The dev box sets this false in ass.dev.toml.)
 device = 0             # the one card ASS is allowed to monopolize
 vram_budget_mb = 24000 # card size minus headroom; covers pinned model + park tax
-context_tax_mb = 500   # VRAM a parked (alive) process holds, charged per backend
+context_tax_mb = 400   # VRAM a parked (alive) process holds, charged per backend.
+                       # Measured: demucs holds ~354 MiB parked on a 3090 (model
+                       # weights freed, CUDA context remains) — see docs/measurements.md.
 
 [server]
 addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex)

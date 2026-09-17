@@ -28,6 +28,26 @@ model loaded, idle. "Peak" = during active inference.
 | Backend | Model | Resident (idle) | Peak (active) | Measured on |
 |---|---|---|---|---|
 | stem-separator | `htdemucs_ft` | ~0.5GB (0.9GB total − 0.39 baseline) | ~1.6GB (peaked just under 2GB total) | `ai2`, RTX 4080 |
+| stem-separator | `htdemucs_ft` | **1018 MiB** process total (see park below) | — | `ai.lemon.com`, RTX 3090 |
+
+### Park measured — the real context tax (ai.lemon.com, RTX 3090)
+
+Per-process `nvidia-smi` across a park/unpark cycle, isolating the demucs process
+(pid, not the whole card — GPU 0 had other tenants):
+
+| demucs process | VRAM |
+|---|---|
+| resident (unparked) | **1018 MiB** |
+| parked (weights → CPU) | **354 MiB** |
+| **freed by park (model weights)** | **664 MiB** |
+
+So `/park` works exactly as intended: `model.to('cpu')` + `empty_cache()` drops
+the process 1018 → 354 MiB, deterministically, every cycle. The **354 MiB that
+remains is the real context tax** — the CUDA context + cuDNN/cuBLAS workspaces an
+alive parked process holds with its weights on the CPU. `ass.toml` now sets
+`context_tax_mb = 400` (measured 354 + a little headroom, since workspace size
+can vary with input shape). The model itself is only ~664 MiB on the card —
+demucs really is small.
 
 ### Lazy VRAM load (nvtop-confirmed)
 
@@ -50,9 +70,9 @@ resident + peak figures, not container start.
   weights *into* system RAM, so on this box `memory.ram_budget_mb` is the limit
   that bites first, and the `idle_ttl` parked→stopped reclaim (hand RAM back to
   the OS) is the setting that matters here — not on the 128GB box.
-- The `context_tax_mb` guess (500MB VRAM per parked/alive process) is still
-  unmeasured. Measure it directly: park demucs, watch what VRAM it *keeps* held
-  with weights on the CPU. That number is the real per-parked reserve.
+- The `context_tax_mb` is now **measured, not guessed**: ~354 MiB for demucs on a
+  3090 (see the park table above). `ass.toml` reserves 400. Other backends will
+  differ — measure each the same way (park it, read its process VRAM).
 
 ## Method (so numbers stay comparable)
 
