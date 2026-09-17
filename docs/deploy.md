@@ -41,7 +41,7 @@ before you submit a job.
 From the AudioSlopServer repo root:
 
 ```sh
-mkdir -p data                       # ASS's job DB + harvested artifacts land here
+sudo mkdir -p /srv/ass/data         # ASS's job DB + harvested artifacts land here
 docker compose up --build -d        # builds ass:local, starts it on the host network
 docker compose logs -f ass          # ASCII-art banner, then "listening on :8080"
 curl -s localhost:8080/health       # {"status":"ok","service":"ASS"}

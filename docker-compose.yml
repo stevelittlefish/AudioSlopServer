@@ -31,6 +31,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Config in, read-only. Edit ass.toml on the host, restart to apply.
       - ./ass.toml:/app/ass.toml:ro
-      # ASS's own state: the job DB and harvested artifact bytes. Survives restarts.
-      - ./data:/app/data
+      # ASS's own state: the job DB and harvested artifact bytes. Lives under
+      # /srv/ass (alongside the shared model cache), not next to the repo, so it
+      # survives re-clones and host moves. Container path stays /app/data, which
+      # is where ass.toml's default db_path/results_dir resolve.
+      - /srv/ass/data:/app/data
     restart: unless-stopped
