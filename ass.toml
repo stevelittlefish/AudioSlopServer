@@ -79,7 +79,11 @@ volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs"]
 # /unpark) in stevelittlefish/ACE-Step-1.5-inference-server; published to GHCR by
 # that repo's container.yml on a v* tag. Pull with ./pull-services.sh.
 image = "ghcr.io/stevelittlefish/ace-step-1.5-inference-server:latest"
-port  = 8001            # api_server default (ACESTEP_API_PORT); Dockerfile EXPOSEs it
+port  = 2766            # 0xACE. NOT the image's 8001 default — that clashes with
+                        # a standalone ACE-Step / gradio someone might leave on
+                        # 8001. ASS publishes host:port -> container:port on the
+                        # SAME number, so the container must listen here too:
+                        # ACESTEP_API_PORT below is pinned to match.
 verb  = "generate"      # POST /v1/generate; returns the audio clip + audio_codes
                         # blueprint + lyrics + metas as a mixed-kind artifacts[]
 evict = "stop"          # START HERE. The XL DiT is ~9GB bf16 (+ the 4B LM when
@@ -93,7 +97,7 @@ idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 8192      # generation wants elbow room
 # This backend reads ACESTEP_API_PORT, not the generic PORT ASS injects, so pin it
 # to the published port. ACESTEP_MODE=api runs the REST server (not Gradio).
-env     = { ACESTEP_API_PORT = "8001", ACESTEP_MODE = "api" }
+env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api" }
 # Shared /cache convention, same as every other backend: the DiT + LM + VAE load
 # from the HF hub cache under HF_HOME=/cache/huggingface (models--ACE-Step--*), so
 # they live in the one shared cache and dedup/authenticate via the token already
