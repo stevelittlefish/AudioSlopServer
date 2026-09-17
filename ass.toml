@@ -97,7 +97,14 @@ idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 8192      # generation wants elbow room
 # This backend reads ACESTEP_API_PORT, not the generic PORT ASS injects, so pin it
 # to the published port. ACESTEP_MODE=api runs the REST server (not Gradio).
-env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api" }
+# ACESTEP_CHECKPOINTS_DIR: ACE-Step's DiT/VAE loader does NOT use the HF hub
+# cache (HF_HOME) — it snapshot_downloads into a flat `checkpoints/` local_dir,
+# which defaults to /app/checkpoints (unmounted → wiped every restart → it
+# re-downloads GBs on every boot). Point it inside the shared /cache mount so the
+# weights land in the shared cache and persist. Not a new mount — /cache is
+# already mounted below. (HF_HOME=/cache/huggingface still covers the transformers
+# bits — tokenizers, the Qwen text-encoder — which DO honor the hub cache.)
+env     = { ACESTEP_API_PORT = "2766", ACESTEP_MODE = "api", ACESTEP_CHECKPOINTS_DIR = "/cache/acestep/checkpoints" }
 # Shared /cache convention, same as every other backend: the DiT + LM + VAE load
 # from the HF hub cache under HF_HOME=/cache/huggingface (models--ACE-Step--*), so
 # they live in the one shared cache and dedup/authenticate via the token already
