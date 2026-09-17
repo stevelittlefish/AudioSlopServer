@@ -10,7 +10,7 @@ machines — this file is the input to the eventual concrete budget defaults.
 | Host | GPU | VRAM | System RAM | Notes |
 |---|---|---|---|---|
 | `ai.lemon.com` | (big box) | — | 128GB | **The test & deployment target.** The roomy server; keeps things parked forever. This is where ASS actually runs. |
-| `ai2.lemon.com` | RTX 4080 | 16GB | **16GB** | *Not* our test box — just where the demucs numbers below happened to get measured. Fast, but RAM-constrained ("peasant-ish"): here **system RAM binds before VRAM.** Useful as the constrained-box reference. |
+| `ai2.lemon.com` | RTX 4080 (eGPU) | 16GB | **16GB** | *Not* our test box — just where the demucs numbers below happened to get measured. A **mini PC with an eGPU**: laptop-class host (16GB soldered) + desktop-class card over Thunderbolt. The canonical "peasant with a fancy hat": memory-constrained, compute-rich. Here **system RAM binds before VRAM**, so favour `evict = "stop"` + `idle_ttl` reclaim over parking — reloads are cheap on this card *anyway*, and the eGPU's Thunderbolt link makes the park↔unpark CPU↔VRAM copy **slower** than on a directly-attached card (so the ~2–5s park-restore assumption is optimistic here). |
 
 ### The VRAM baseline (~0.39GB with everything off)
 
