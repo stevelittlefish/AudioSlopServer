@@ -12,7 +12,11 @@
     --accent:#5ee0b0; --accent-dim:#2b6b57;
     --pinned:#5ee0b0; --parked:#f2c14e; --stopped:#5b6675;
     --danger:#ff6b6b; --danger-dim:#5a2626;
-    --radius:14px; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --radius:14px;
+    /* A terminal-y stack that works everywhere with no download: use whatever
+       good mono the OS already ships (DejaVu/Liberation on Linux, Menlo on Mac,
+       Cascadia/Consolas on Windows), always ending in generic monospace. */
+    --mono:ui-monospace,"DejaVu Sans Mono","JetBrains Mono","Cascadia Code","Liberation Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   }
   * { box-sizing:border-box; }
@@ -34,7 +38,7 @@
   }
   .brand { display:flex; align-items:baseline; gap:12px; }
   .brand .logo {
-    font-family:"Courier New",var(--mono); font-weight:700; font-size:30px;
+    font-family:var(--mono); font-weight:700; font-size:30px;
     line-height:1; letter-spacing:-.02em; color:var(--accent);
     text-shadow:0 0 22px rgba(94,224,176,.4); user-select:none;
   }
