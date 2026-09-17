@@ -72,3 +72,34 @@ shm_size_mb = 8192      # SA3 wants elbow room (its compose sets 8gb)
 # token in the shared cache (/srv/ass/cache/huggingface/token) — never in this
 # committed file. The image's CMD already loads `--model medium`.
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs"]
+
+[services.acestep]
+# ACE-Step 1.5 XL — music generation (the big one: caption + lyrics -> a song).
+# Forked + conformed to the ASS contract (artifacts[] + /result/{name} + /park +
+# /unpark) in stevelittlefish/ACE-Step-1.5-inference-server; published to GHCR by
+# that repo's container.yml on a v* tag. Pull with ./pull-services.sh.
+image = "ghcr.io/stevelittlefish/ace-step-1.5-inference-server:latest"
+port  = 8001            # api_server default (ACESTEP_API_PORT); Dockerfile EXPOSEs it
+verb  = "generate"      # POST /v1/generate; returns the audio clip + audio_codes
+                        # blueprint + lyrics + metas as a mixed-kind artifacts[]
+evict = "stop"          # START HERE. The XL DiT is ~9GB bf16 (+ the 4B LM when
+                        # thinking=true), so the parked context tax may not pay off
+                        # vs a cold reload. /park + /unpark ARE implemented — flip
+                        # this to "park" once the VRAM/RAM is measured on the box
+                        # (docs/measurements.md) and the numbers justify it.
+ram_reserve_mb = 10000  # rough parked-in-RAM guess for the XL DiT (+LM); UNMEASURED
+                        # — refine on the box before trusting it.
+idle_ttl = "0"          # never reclaim parked RAM on the big server
+shm_size_mb = 8192      # generation wants elbow room
+# This backend reads ACESTEP_API_PORT, not the generic PORT ASS injects, so pin it
+# to the published port. ACESTEP_MODE=api runs the REST server (not Gradio).
+env     = { ACESTEP_API_PORT = "8001", ACESTEP_MODE = "api" }
+# Shared /cache convention (HF token + weights shared across backends). ACE-Step
+# also keeps its model zoo under /app/checkpoints — mount a persistent host dir so
+# a swap/restart doesn't re-download the DiT + LM. Gated weights authenticate via
+# the HF token already in the shared cache (/srv/ass/cache/huggingface/token).
+volumes = [
+  "/srv/ass/cache:/cache",
+  "/srv/ass/checkpoints/acestep:/app/checkpoints",
+  "/srv/ass/outputs/acestep:/app/outputs",
+]
