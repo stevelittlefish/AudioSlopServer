@@ -97,6 +97,10 @@ worked examples. The full option surface:
 | `storage.results_dir` | string | `data/results` | On-disk harvested-artifact store. |
 | `docker.socket` | string | platform default | Docker daemon socket (e.g. `/var/run/docker.sock`). |
 
+> **Why `:2645`?** It's `0xA55` — "ASS" spelled in hex. Unique, not an `80xx`,
+> no 69 or 420, and it's got a reason you'll actually remember. ASS lives at
+> `0xA55`.
+
 ### Per-service: `[services.<name>]`
 
 `<name>` is the service key used in the API path (`POST /v1/<name>/jobs`).
