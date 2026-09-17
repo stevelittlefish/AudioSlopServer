@@ -92,16 +92,18 @@ of that is done.
       for real deployment though: `gpu.enabled = true` (was defaulting false!),
       pinned `SEP_PORT`/`SEP_MODEL` via per-service env (the backend reads
       SEP_PORT, not the generic PORT ASS injects), and mounted the weight cache.
-- [ ] **Real end-to-end on the GPU box** — full procedure in
-      [docs/deploy.md](docs/deploy.md). Pure-docker: `docker compose up` runs ASS
-      (host network + docker socket), backend image built locally (no registry),
-      ASS starts the demucs container on demand. Submit a real song, confirm
-      harvested stems, then hit the backend's `/park` directly and watch
-      `nvidia-smi` free VRAM (validates the CUDA park code + the `.model`
-      assumption in `separation.py:park_model`, and gives us the real parked
-      context tax for measurements.md). The one step neither dev box can do.
-      ASS-in-docker itself is verified locally (builds, boots, reaches the
-      daemon); only the GPU + torch path is untested.
+- [x] **Real end-to-end on the GPU box** — DONE, verified on ai.lemon.com
+      (2026-09-17). GHCR image pulled, `docker compose up` ran ASS on :2645;
+      submitted a real clip → cold-start → separate → harvest → `succeeded` with
+      the correct `artifacts[]` (vocals + no_vocals, audio/wav), real stereo WAVs
+      served from ASS's own store, demucs `pinned` with the lease released.
+      `/park` + `/unpark` both returned clean 200s on real CUDA — the `.model`
+      assumption in `separation.py:park_model` holds, no fix needed. Procedure in
+      [docs/deploy.md](docs/deploy.md).
+- [ ] **Measure the parked VRAM (context tax)** — the one thing not yet captured:
+      `nvidia-smi` on the host across unpark→park→unpark. The residual VRAM while
+      parked is the real `context_tax_mb` (a guess of 500 in `ass.toml`); record
+      it in [docs/measurements.md](docs/measurements.md).
 
 ## Later — The rest
 
