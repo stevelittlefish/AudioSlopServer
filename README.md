@@ -77,4 +77,21 @@ no matter how copyleft the backends behind it are.
 
 ## Status
 
-🚧 Spec in progress — not yet built.
+🐣 **Slice 1 complete — the orchestrator works end to end.** ASS boots, reads
+its TOML config, brings a backend's container up on demand (via the raw Docker
+socket, no SDK), forwards a job, polls it to completion, and harvests every
+output — multi-file and multi-type (stems, audio, ABC scores) — into its own
+store so results survive the backend being evicted. All verified on a machine
+with **no GPU**, using a mock backend.
+
+What's working today:
+
+- `POST /v1/{service}/jobs` → submit; `GET /v1/jobs/{id}` → poll;
+  `GET /v1/jobs/{id}/result[/{name}]` → download; `GET /v1/backends` → status.
+- On-demand container lifecycle (create → health-wait → forward) and
+  harvest-on-completion into a sqlite-tracked, on-disk results store.
+- One dependency-light Go binary. `./run.sh -config ass.dev.toml`.
+
+Next up — **Slice 2**: the actual reason ASS exists. Two backends, one GPU, and
+the **arbiter** that evicts one model to load another (Ollama-style), plus real
+`/park` / `/unpark` on a forked backend. See [TODO.md](TODO.md).
