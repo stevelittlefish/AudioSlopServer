@@ -224,11 +224,18 @@ viewing it live.)
       match the admin panel. Verified end to end against the mock demucs backend
       (drop file → two-stem → succeeded → two audio/wav stems play + download).
 - [x] Per-verb forms with a generic fallback: **separate** (mode/format/shifts/
-      overlap + drag-drop audio) fully built; **generate** (prompt/seconds/steps/
-      seed + optional audio) sketched for SA3; unknown verbs get a raw-params
-      JSON textarea + optional file, so the page is useful for any future backend.
-      (Sourcing field lists/ranges from each backend's `/v1/info` is a later
-      polish — the forms are hardcoded per verb for now.)
+      overlap + drag-drop audio) and **generate** (SA3) both fully built; unknown
+      verbs get a raw-params JSON textarea + optional file, so the page is useful
+      for any future backend. (Sourcing field lists/ranges from each backend's
+      `/v1/info` is a later polish — the forms are hardcoded per verb for now.)
+- [x] **SA3 generate form** — three workflows via a segmented toggle:
+      text→audio, variation (init_audio + init_noise_level), inpaint
+      (inpaint_audio + mask starts/ends), each posting to the right multipart
+      file field. Advanced drawer: negative_prompt, cfg_scale, batch_size, LoRA
+      strength, the 7 output formats, return_spectrogram. Params/field names taken
+      from SlopBC's SA3 client + the conformed schema. Spectrogram/image
+      artifacts render inline as `<img>`. Verified end to end against the mock
+      generate backend (text path); variation/inpaint need real SA3 to exercise.
 - [x] Cross-links: each admin card has a `test ▸` link to its test page; the test
       page has a `‹ admin` back link. (A dedicated index page is unnecessary — the
       admin panel already lists everything with links.)

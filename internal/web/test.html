@@ -64,6 +64,17 @@
   .seg button { background:var(--panel2); border:0; border-right:1px solid var(--line2); color:var(--ink-dim); padding:8px 14px; font-size:13px; cursor:pointer; }
   .seg button:last-child { border-right:0; }
   .seg button.on { background:var(--accent-dim); color:#eafff6; }
+  .seg.wf { margin-bottom:18px; }
+
+  .wfsec { display:none; }
+  .wfsec.show { display:block; }
+  .check { display:flex; align-items:center; gap:9px; color:var(--ink-dim); font-size:13px; cursor:pointer; }
+  .check input { width:16px; height:16px; accent-color:var(--accent); }
+  .adv { border-top:1px solid var(--line); margin-top:6px; padding-top:16px; }
+  .adv > summary { cursor:pointer; color:var(--ink-faint); font-size:12px; font-family:var(--mono); list-style:none; margin-bottom:14px; }
+  .adv > summary::-webkit-details-marker { display:none; }
+  .adv[open] > summary { color:var(--ink-dim); }
+  .note { color:var(--ink-faint); font-size:11.5px; margin:-8px 0 14px; }
 
   button.primary { background:var(--accent-dim); border:1px solid var(--accent); color:#eafff6; font-size:14px; font-weight:600; padding:11px 22px; border-radius:10px; cursor:pointer; transition:.12s ease; }
   button.primary:hover:not(:disabled) { background:#347c65; }
@@ -124,23 +135,74 @@
 const $ = s => document.querySelector(s);
 const SERVICE = decodeURIComponent(location.pathname.split("/").pop());
 let VERB = null;
-let chosenFile = null;
+let FORM = null;
 let polling = false;
+const files = {}; // multipart field name -> selected File
 
 function toast(msg, isErr) {
   const el = $("#toast"); el.textContent = msg; el.classList.toggle("err", !!isErr);
-  el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 3400);
+  el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 3600);
 }
-function fmtBytes(n) { if (n == null) return "—"; const u=["B","KB","MB","GB"]; let i=0,v=n; while(v>=1024&&i<u.length-1){v/=1024;i++;} return v.toFixed(v<10&&i>0?1:0)+u[i]; }
+function fmtBytes(n){ if(n==null) return "—"; const u=["B","KB","MB","GB"]; let i=0,v=n; while(v>=1024&&i<u.length-1){v/=1024;i++;} return v.toFixed(v<10&&i>0?1:0)+u[i]; }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
-// --- form builders per verb ------------------------------------------------
-// Each returns { html, requiresFile, buildParams(root) -> object }.
+// --- tiny form helpers -----------------------------------------------------
+const val = (r,p) => { const el=r.querySelector(`[data-p="${p}"]`); return el?el.value.trim():""; };
+const numOpt = (r,p) => { const v=val(r,p); return v===""?undefined:Number(v); };
+const checked = (r,p) => { const el=r.querySelector(`[data-p="${p}"]`); return el?el.checked:false; };
+const seg = (r,name) => { const on=r.querySelector(`[data-seg="${name}"] .on`); return on?on.dataset.v:""; };
+const getFile = f => files[f] || null;
+
+// Parse a comma/space list of numbers ("8, 16" -> [8,16]); "" -> null.
+function numList(s){ const t=(s||"").trim(); if(!t) return null; return t.split(/[,\s]+/).filter(Boolean).map(x=>{ const n=Number(x); if(isNaN(n)) throw new Error(`"${x}" is not a number`); return n; }); }
+
+// A file drop zone, addressed by its multipart field name.
+function dropHTML(label, field, optional){
+  return `
+    <div class="field">
+      <label>${esc(label)}${optional?" (optional)":""}</label>
+      <div class="drop" data-field="${field}">
+        <div>Drop a file here or <b>browse</b></div>
+        <div class="chosen" hidden></div>
+        <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
+      </div>
+    </div>`;
+}
+
+function wireSegments(root){
+  root.querySelectorAll("[data-seg]").forEach(sg => {
+    sg.querySelectorAll("button").forEach(b => b.onclick = () => {
+      sg.querySelectorAll("button").forEach(x => x.classList.remove("on"));
+      b.classList.add("on");
+      if (sg.dataset.seg === "workflow") applyWorkflow(root, b.dataset.v);
+    });
+  });
+}
+function wireDrops(root){
+  root.querySelectorAll(".drop").forEach(drop => {
+    const field = drop.dataset.field;
+    const input = drop.querySelector("input[type=file]");
+    const chosen = drop.querySelector(".chosen");
+    const set = f => { files[field]=f||null; if(f){ chosen.hidden=false; chosen.textContent=`${f.name} · ${fmtBytes(f.size)}`; } else { chosen.hidden=true; } };
+    drop.onclick = () => input.click();
+    input.onchange = () => set(input.files[0]);
+    ["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", ev => { if(ev.dataTransfer.files[0]) set(ev.dataTransfer.files[0]); });
+  });
+}
+// SA3 workflow toggle: show only the active workflow's extra section.
+function applyWorkflow(root, wf){
+  root.querySelectorAll("[data-wf]").forEach(sec => sec.classList.toggle("show", sec.dataset.wf === wf));
+}
+
+// --- forms per verb --------------------------------------------------------
+// Each: { html, build(root) -> {params, files:[{field,file,filename}]} }. build
+// throws on bad/missing input; the message is toasted.
 const FORMS = {
   separate: {
-    requiresFile: true,
     html: `
-      ${dropHTML("Audio to separate")}
+      ${dropHTML("Audio to separate","audio")}
       <div class="field">
         <label>Mode</label>
         <div class="seg" data-seg="mode">
@@ -156,121 +218,150 @@ const FORMS = {
         <div class="field"><label>Overlap (blank = default)</label>
           <input type="number" data-p="overlap" min="0" max="0.99" step="0.05" placeholder="0.25"></div>
       </div>`,
-    buildParams(root) {
-      const p = { mode: seg(root, "mode"), file_format: val(root, "file_format") };
-      const sh = val(root, "shifts"); if (sh) p.shifts = Number(sh);
-      const ov = val(root, "overlap"); if (ov) p.overlap = Number(ov);
-      return p;
+    build(root){
+      const f = getFile("audio");
+      if (!f) throw new Error("pick an audio file first");
+      const p = { mode: seg(root,"mode"), file_format: val(root,"file_format") };
+      const sh = numOpt(root,"shifts"); if (sh!==undefined) p.shifts = sh;
+      const ov = numOpt(root,"overlap"); if (ov!==undefined) p.overlap = ov;
+      return { params:p, files:[{field:"audio", file:f}] };
     },
   },
+
   generate: {
-    requiresFile: false,
     html: `
+      <div class="seg wf" data-seg="workflow">
+        <button type="button" data-v="text" class="on">text → audio</button>
+        <button type="button" data-v="variation">variation</button>
+        <button type="button" data-v="inpaint">inpaint</button>
+      </div>
+
       <div class="field"><label>Prompt</label>
         <textarea data-p="prompt" placeholder="warm analog ambient pad, slow evolving, spacious"></textarea></div>
+
       <div class="row">
-        <div class="field"><label>Duration (s)</label><input type="number" data-p="seconds_total" min="1" placeholder="30"></div>
-        <div class="field"><label>Steps</label><input type="number" data-p="steps" min="1" placeholder="model default"></div>
-        <div class="field"><label>Seed (-1 = random)</label><input type="number" data-p="seed" placeholder="-1"></div>
+        <div class="field"><label>Duration (s)</label><input type="number" data-p="seconds_total" min="1" placeholder="model max"></div>
+        <div class="field"><label>Steps</label><input type="number" data-p="steps" min="1" placeholder="default"></div>
+        <div class="field"><label>Seed (−1 = random)</label><input type="number" data-p="seed" placeholder="-1"></div>
       </div>
-      ${dropHTML("Optional init / inpaint audio", true)}`,
-    buildParams(root) {
-      const p = { prompt: val(root, "prompt") };
-      const d = val(root, "seconds_total"); if (d) p.seconds_total = Number(d);
-      const st = val(root, "steps"); if (st) p.steps = Number(st);
-      const sd = val(root, "seed"); if (sd) p.seed = Number(sd);
-      return p;
+
+      <div class="wfsec" data-wf="variation">
+        ${dropHTML("Init audio (restyled under the prompt)","init_audio")}
+        <div class="field"><label>Init noise level (0.01 tiny change → 1.0 ignore init)</label>
+          <input type="number" data-p="init_noise_level" min="0.01" max="1" step="0.05" placeholder="0.9"></div>
+      </div>
+
+      <div class="wfsec" data-wf="inpaint">
+        ${dropHTML("Audio to inpaint","inpaint_audio")}
+        <div class="row">
+          <div class="field"><label>Mask starts (s, comma-sep)</label><input type="text" data-p="inpaint_mask_starts" placeholder="8"></div>
+          <div class="field"><label>Mask ends (s, comma-sep)</label><input type="text" data-p="inpaint_mask_ends" placeholder="16"></div>
+        </div>
+        <p class="note">Regenerates the masked region(s); starts and ends must have equal counts. For continuation, set start = the clip's length and a longer duration.</p>
+      </div>
+
+      <details class="adv">
+        <summary>advanced</summary>
+        <div class="field"><label>Negative prompt</label>
+          <input type="text" data-p="negative_prompt" placeholder="e.g. vocals, distortion"></div>
+        <div class="row">
+          <div class="field"><label>CFG scale (blank = default)</label><input type="number" data-p="cfg_scale" step="0.5" placeholder="model default"></div>
+          <div class="field"><label>Batch size</label><input type="number" data-p="batch_size" min="1" placeholder="1"></div>
+          <div class="field"><label>LoRA strength (blank = off)</label><input type="number" data-p="lora_strength" step="0.05" placeholder="off"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Output format</label>
+            <select data-p="file_format">
+              <option>wav</option><option>flac</option><option>mp3 320k</option>
+              <option>mp3 v0</option><option>mp3 128k</option>
+              <option>m4a aac_he_v2 64k</option><option>m4a aac_he_v2 32k</option>
+            </select></div>
+          <div class="field" style="display:flex;align-items:flex-end;">
+            <label class="check"><input type="checkbox" data-p="return_spectrogram" checked> return spectrogram</label></div>
+        </div>
+      </details>`,
+    build(root){
+      const wf = seg(root,"workflow") || "text";
+      const prompt = val(root,"prompt");
+      if (!prompt && wf !== "inpaint") throw new Error("a prompt is required");
+      const p = { prompt };
+      const d  = numOpt(root,"seconds_total"); if (d!==undefined) p.seconds_total = d;
+      const st = numOpt(root,"steps");         if (st!==undefined) p.steps = st;
+      const sd = numOpt(root,"seed");          if (sd!==undefined) p.seed = sd;
+      const cf = numOpt(root,"cfg_scale");     if (cf!==undefined) p.cfg_scale = cf;
+      const bs = numOpt(root,"batch_size");    if (bs!==undefined) p.batch_size = bs;
+      const ng = val(root,"negative_prompt");  if (ng) p.negative_prompt = ng;
+      p.file_format = val(root,"file_format") || "wav";
+      p.return_spectrogram = checked(root,"return_spectrogram");
+      const lora = numOpt(root,"lora_strength"); if (lora!==undefined) p.loras = [{ strength: lora }];
+
+      const out = [];
+      if (wf === "variation") {
+        const f = getFile("init_audio"); if (!f) throw new Error("variation needs an init audio file");
+        out.push({ field:"init_audio", file:f });
+        const nl = numOpt(root,"init_noise_level"); if (nl!==undefined) p.init_noise_level = nl;
+      } else if (wf === "inpaint") {
+        const f = getFile("inpaint_audio"); if (!f) throw new Error("inpaint needs an audio file");
+        out.push({ field:"inpaint_audio", file:f });
+        const starts = numList(val(root,"inpaint_mask_starts"));
+        const ends   = numList(val(root,"inpaint_mask_ends"));
+        if (!starts || !ends) throw new Error("inpaint needs mask starts and ends");
+        if (starts.length !== ends.length) throw new Error("mask starts and ends must have equal counts");
+        p.inpaint_mask_starts = starts; p.inpaint_mask_ends = ends;
+      }
+      return { params:p, files:out };
     },
   },
 };
 
-// Generic fallback for any verb we don't have a bespoke form for: raw params
-// JSON plus an optional file upload. Keeps the page useful for future backends.
-function genericForm() {
+// Generic fallback for any verb without a bespoke form.
+function genericForm(){
   return {
-    requiresFile: false,
     html: `
       <div class="field"><label>Params (JSON, sent as the "params" field)</label>
         <textarea data-p="__raw" placeholder='{"prompt":"..."}'>{}</textarea></div>
-      ${dropHTML("Optional input file", true)}`,
-    buildParams(root) {
-      const raw = val(root, "__raw") || "{}";
-      return JSON.parse(raw); // throws -> caught by submit()
+      ${dropHTML("Optional input file","audio", true)}`,
+    build(root){
+      const params = JSON.parse(val(root,"__raw") || "{}"); // throws -> caught
+      const f = getFile("audio");
+      return { params, files: f ? [{field:"audio", file:f}] : [] };
     },
   };
 }
 
-function dropHTML(label, optional) {
-  return `
-    <div class="field">
-      <label>${esc(label)}${optional ? " (optional)" : ""}</label>
-      <div class="drop" id="drop">
-        <div>Drop a file here or <b>browse</b></div>
-        <div class="chosen" id="chosen" hidden></div>
-        <input type="file" id="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg" hidden>
-      </div>
-    </div>`;
-}
-
-// --- tiny form helpers -----------------------------------------------------
-const val = (root, p) => { const el = root.querySelector(`[data-p="${p}"]`); return el ? el.value.trim() : ""; };
-const seg = (root, name) => { const on = root.querySelector(`[data-seg="${name}"] .on`); return on ? on.dataset.v : ""; };
-
-function wireSegments(root) {
-  root.querySelectorAll("[data-seg]").forEach(seg => {
-    seg.querySelectorAll("button").forEach(b => b.onclick = () => {
-      seg.querySelectorAll("button").forEach(x => x.classList.remove("on"));
-      b.classList.add("on");
-    });
-  });
-}
-function wireDrop(root) {
-  const drop = root.querySelector("#drop"); if (!drop) return;
-  const input = root.querySelector("#file"); const chosen = root.querySelector("#chosen");
-  const set = f => { chosenFile = f || null; if (f) { chosen.hidden = false; chosen.textContent = `${f.name} · ${fmtBytes(f.size)}`; } else { chosen.hidden = true; } };
-  drop.onclick = () => input.click();
-  input.onchange = () => set(input.files[0]);
-  ["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("over"); }));
-  ["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("over"); }));
-  drop.addEventListener("drop", ev => { if (ev.dataTransfer.files[0]) set(ev.dataTransfer.files[0]); });
-}
-
 // --- lifecycle -------------------------------------------------------------
-let FORM = null;
-
-async function init() {
+async function init(){
   $("#svcname").textContent = SERVICE;
   try {
     const r = await fetch("/v1/backends");
     const data = await r.json();
-    const b = (data.backends || []).find(x => x.name === SERVICE);
+    const b = (data.backends||[]).find(x => x.name === SERVICE);
     VERB = b ? b.verb : null;
-  } catch (e) { /* leave VERB null -> generic */ }
+  } catch(e) { /* leave VERB null -> generic */ }
 
   $("#svcverb").textContent = VERB ? (VERB + " · test") : "test";
   FORM = FORMS[VERB] || genericForm();
   $("#form").innerHTML = FORM.html;
   $("#formhint").textContent = FORMS[VERB]
     ? `POST /v1/${SERVICE}/jobs — the ${VERB} verb.`
-    : `Unknown verb${VERB ? " "+VERB : ""}; using the raw-params form. POST /v1/${SERVICE}/jobs.`;
+    : `Unknown verb${VERB?" "+VERB:""}; using the raw-params form. POST /v1/${SERVICE}/jobs.`;
   wireSegments($("#form"));
-  wireDrop($("#form"));
+  wireDrops($("#form"));
+  applyWorkflow($("#form"), "text"); // no-op unless the generate form is present
   $("#submit").disabled = false;
 }
 
 $("#submit").onclick = submit;
 
-async function submit() {
+async function submit(){
   if (polling) return;
-  let params;
-  try { params = FORM.buildParams($("#form")); }
-  catch (e) { toast("Bad params JSON: " + e.message, true); return; }
-
-  if (FORM.requiresFile && !chosenFile) { toast("Pick an audio file first", true); return; }
+  let req;
+  try { req = FORM.build($("#form")); }
+  catch(e){ toast(e.message, true); return; }
 
   const fd = new FormData();
-  fd.append("params", JSON.stringify(params));
-  if (chosenFile) fd.append("audio", chosenFile, chosenFile.name); // stem-separator reads "audio"
+  fd.append("params", JSON.stringify(req.params));
+  (req.files||[]).forEach(f => fd.append(f.field, f.file, f.filename || f.file.name));
 
   $("#resultpanel").hidden = false;
   $("#art").innerHTML = "";
@@ -281,21 +372,21 @@ async function submit() {
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
     await poll(body.job_id);
-  } catch (e) {
+  } catch(e) {
     setStatus("submit failed: " + e.message, "err");
     toast(e.message, true);
     $("#submit").disabled = false;
   }
 }
 
-function setStatus(text, kind) {
+function setStatus(text, kind){
   const el = $("#status");
   const spin = kind === "spin" ? '<span class="spin"></span>' : "";
-  el.className = "status" + (kind === "ok" ? " ok" : kind === "err" ? " err" : "");
+  el.className = "status" + (kind==="ok"?" ok":kind==="err"?" err":"");
   el.innerHTML = spin + `<span>${esc(text)}</span>`;
 }
 
-async function poll(jobID) {
+async function poll(jobID){
   polling = true;
   const started = Date.now();
   while (true) {
@@ -304,11 +395,10 @@ async function poll(jobID) {
       const r = await fetch(`/v1/jobs/${jobID}`);
       job = await r.json();
       if (!r.ok) throw new Error(job.error || ("HTTP " + r.status));
-    } catch (e) { setStatus("poll failed: " + e.message, "err"); break; }
-
-    const secs = Math.round((Date.now() - started) / 1000);
-    if (job.state === "succeeded") { setStatus(`succeeded in ${secs}s`, "ok"); renderArtifacts(jobID, job.artifacts || []); break; }
-    if (job.state === "failed")    { setStatus("failed: " + (job.error || "unknown"), "err"); break; }
+    } catch(e){ setStatus("poll failed: " + e.message, "err"); break; }
+    const secs = Math.round((Date.now()-started)/1000);
+    if (job.state === "succeeded") { setStatus(`succeeded in ${secs}s`, "ok"); renderArtifacts(jobID, job.artifacts||[]); break; }
+    if (job.state === "failed")    { setStatus("failed: " + (job.error||"unknown"), "err"); break; }
     setStatus(`${job.state}…  ${secs}s`, "spin");
     await new Promise(r => setTimeout(r, 1500));
   }
@@ -316,13 +406,15 @@ async function poll(jobID) {
   $("#submit").disabled = false;
 }
 
-function renderArtifacts(jobID, arts) {
+function renderArtifacts(jobID, arts){
   const box = $("#art");
   if (!arts.length) { box.innerHTML = '<div class="muted">Job produced no artifacts.</div>'; return; }
   box.innerHTML = "";
   arts.forEach(a => {
     const url = `/v1/jobs/${jobID}/result/${encodeURIComponent(a.name)}`;
-    const isAudio = (a.content_type || "").startsWith("audio/");
+    const ct = a.content_type || "";
+    const isAudio = ct.startsWith("audio/");
+    const isImage = ct.startsWith("image/");
     const el = document.createElement("div");
     el.className = "artcard";
     el.innerHTML = `
@@ -332,7 +424,8 @@ function renderArtifacts(jobID, arts) {
         <span class="asize">${fmtBytes(a.bytes)}</span>
       </div>
       ${isAudio ? `<audio controls preload="none" src="${url}"></audio>` : ""}
-      <a class="dl" href="${url}" download="${esc(a.name)}">↓ download ${esc(a.content_type || "")}</a>`;
+      ${isImage ? `<img src="${url}" alt="${esc(a.name)}" style="max-width:100%;border-radius:8px;display:block;margin-bottom:8px;">` : ""}
+      <a class="dl" href="${url}" download="${esc(a.name)}">↓ download ${esc(ct)}</a>`;
     box.appendChild(el);
   });
 }
