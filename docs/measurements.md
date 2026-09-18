@@ -107,6 +107,38 @@ alive parked process holds with its weights on the CPU. `ass.toml` now sets
 can vary with input shape). The model itself is only ~664 MiB on the card —
 demucs really is small.
 
+### All four parked at once — the real per-backend context tax (2026-09-18)
+
+`nvidia-smi` with all four ASS backends **parked** on GPU 0 (weights to CPU, only
+the CUDA context + workspaces left on the card). PIDs mapped to containers via
+`docker inspect -f '{{.State.Pid}}'`. This is the number `vram_parked_mb` charges
+per parked backend against the budget:
+
+| backend | parked VRAM | process | notes |
+|---|---|---|---|
+| demucs | **354 MiB** | system `python3` | matches the single-backend measurement above |
+| ACE-Step | **616 MiB** | `/app/.venv/bin/python` | **small despite the XL DiT** — `OFFLOAD_TO_CPU` already keeps most weights off the card, so park leaves little behind. Predicted 0.5–2GB; landed at the bottom. |
+| YuE | **1042 MiB** | system `python3` | the 3B model's context + kernels |
+| stable-audio | **1948 MiB** | `/app/.venv/bin/python` | **the heaviest**, ~3× ACE-Step — flash-attn + larger persistent workspaces. Was the worst-estimated in config (guessed 800). |
+
+**Total ASS parked cost ≈ 3960 MiB** to keep all four warm — real and worth
+budgeting for. Plus wyoming-whisper's 2100 → GPU 0 idled at 6091 MiB with nothing
+pinned. `ass.toml` now sets each `vram_parked_mb` from these (measured + headroom):
+demucs 400, ACE-Step 700, YuE 1100, stable-audio 2000.
+
+**Two surprises worth remembering:** the park tax does **not** track model size —
+ACE-Step (biggest model) parks smallest, stable-audio (medium) parks largest.
+It's about how much CUDA workspace the process pins, not the weights (those are on
+the CPU). And the old per-service *estimates* were badly off in both directions,
+which is the whole argument for measuring.
+
+**Note — `/v1/info` VRAM telemetry does NOT capture this.** The parked context tax
+is CUDA-driver-level (context + cuBLAS/cuDNN/flash-attn workspaces); torch's
+`memory_allocated`/`reserved` — what `/v1/info` and the admin VRAM table report —
+read ~0 for a parked process because there are no live tensors on the card. So the
+admin table gives you inference **peaks** (pinned), and per-process `nvidia-smi`
+stays the tool for **parked** taxes. Different memory layers, different tools.
+
 ### Lazy VRAM load (nvtop-confirmed)
 
 demucs uses **zero VRAM until its first request** — the container starts, the

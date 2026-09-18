@@ -82,7 +82,8 @@ evict = "park"          # cold start reloads a multi-GB checkpoint + flash-attn,
                         # peasant box (tight RAM) should switch this to "stop".
 vram_pinned_mb = 6000   # UNMEASURED estimate for the medium model's peak — measure
                         # with scripts/measure-vram.sh and raise it here if you OOM.
-vram_parked_mb = 800    # UNMEASURED park tax estimate; falls back to context_tax if 0.
+vram_parked_mb = 2000   # MEASURED: 1948 MiB parked on a 3090 — the HEAVIEST park tax
+                        # of the four (flash-attn + larger workspaces). See measurements.md.
 ram_reserve_mb = 8000   # rough parked-in-RAM cost of the medium model; UNMEASURED
                         # — refine once we run it on the box (see docs/measurements.md).
 idle_ttl = "0"          # never reclaim parked RAM on the big server
@@ -119,7 +120,9 @@ evict = "park"          # ACE-Step is the backend park pays off MOST for: its co
                         # fits GPU 0's ~21.5GB usable with room to spare).
 vram_pinned_mb = 10000  # DiT ~9GB on the card + inference headroom. Peak UNMEASURED
                         # — measure with scripts/measure-vram.sh and raise on OOM.
-vram_parked_mb = 1500   # predicted context tax (0.5-2GB); the one number to confirm.
+vram_parked_mb = 700    # MEASURED: 616 MiB parked on a 3090 — SMALL, despite the XL
+                        # DiT. OFFLOAD_TO_CPU already keeps most weights off the card, so
+                        # park leaves little behind. (Predicted 0.5-2GB; landed low.)
 ram_reserve_mb = 14000  # parked-in-RAM estimate: DiT ~9GB + LM 1.7B ~3.5GB + Qwen
                         # text-enc ~1.2GB + VAE ~0.3GB. Still UNMEASURED — refine on
                         # the box (see docs/measurements.md method).
@@ -173,7 +176,7 @@ evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
                         # "stop" only if the numbers don't justify holding it in RAM.
 vram_pinned_mb = 8000   # UNMEASURED estimate for the 3B model's peak — measure with
                         # scripts/measure-vram.sh and raise it here if you OOM.
-vram_parked_mb = 1000   # UNMEASURED park tax estimate.
+vram_parked_mb = 1100   # MEASURED: 1042 MiB parked on a 3090. See docs/measurements.md.
 ram_reserve_mb = 10000  # rough parked-in-RAM guess for the 3B model; UNMEASURED —
                         # refine on the box before trusting it.
 idle_ttl = "0"          # never reclaim parked RAM on the big server
