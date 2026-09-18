@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -30,6 +31,39 @@ func TestWaitHealthy_BecomesHealthy(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&hits); got < 3 {
 		t.Fatalf("expected at least 3 probes, got %d", got)
+	}
+}
+
+// TestWaitHealthyLive_FailsFastOnDeadContainer: the backend never answers, but
+// its "container" reports exited after a couple of probes. WaitHealthyLive must
+// return that error promptly — NOT wait out the (here, long) context — because
+// the caller holds the arbiter's swap slot while it waits.
+func TestWaitHealthyLive_FailsFastOnDeadContainer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError) // never healthy
+	}))
+	defer srv.Close()
+
+	var checks int32
+	dead := errors.New("container exited during startup")
+	alive := func(context.Context) error {
+		if atomic.AddInt32(&checks, 1) >= 2 {
+			return dead
+		}
+		return nil
+	}
+
+	// Generous context — the point is we return WELL before it, on the dead signal.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := WaitHealthyLive(ctx, srv.URL, 20*time.Millisecond, alive)
+	if !errors.Is(err, dead) {
+		t.Fatalf("expected the dead-container error, got: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("fail-fast took %v — should have bailed on the dead signal, not waited the ctx", elapsed)
 	}
 }
 

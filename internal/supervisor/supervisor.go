@@ -81,10 +81,26 @@ func (s *Supervisor) EnsureUp(ctx context.Context, service string) error {
 		}
 	}
 
-	// Now the important part: wait until it actually answers.
+	// Now the important part: wait until it actually answers — but bail the instant
+	// the container dies. A backend that crash-loops on startup (bad image, missing
+	// module, OOM) exits immediately; without this we'd poll its dead port until the
+	// job's ~30-min context expired, holding the arbiter's single swap slot the whole
+	// time and wedging every OTHER backend behind it. So on each poll, check the
+	// container is still running; if it exited, fail fast with a pointer to the logs.
 	url := s.BaseURL(service) + "/health"
 	log.Printf("[supervisor] waiting for %s to be healthy at %s", name, url)
-	if err := WaitHealthy(ctx, url, 500*time.Millisecond); err != nil {
+	alive := func(c context.Context) error {
+		st, err := s.docker.Inspect(c, name)
+		if err != nil {
+			return nil // transient inspect hiccup — don't fail the wait on it, just retry
+		}
+		if st.Exists && (st.Status == "exited" || st.Status == "dead") {
+			return fmt.Errorf("container %s exited during startup (status %q) — it crashed; run `docker logs %s`",
+				name, st.Status, name)
+		}
+		return nil
+	}
+	if err := WaitHealthyLive(ctx, url, 500*time.Millisecond, alive); err != nil {
 		return fmt.Errorf("backend %q: %w", service, err)
 	}
 	log.Printf("[supervisor] %s is healthy", name)
