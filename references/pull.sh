@@ -28,7 +28,10 @@ PUBLIC_REPOS=(
   # Stable Audio 3 — our dockerised (probably stale) wrapper, and upstream.
   "git@github.com:stevelittlefish/stable-audio-3-docker.git"
   "git@github.com:Stability-AI/stable-audio-3.git"
-  # YuE 2 — music generation.
+  # YuE 2 — music generation: our server fork, and the upstream it forked from.
+  # Dir pinned lowercase to match the existing checkout (the remote's canonical
+  # name is capitalised YuE-inference-server; basename would clone a second copy).
+  "git@github.com:stevelittlefish/YuE-inference-server.git|yue-inference-server"
   "git@github.com:multimodal-art-projection/YuE.git"
   # DEMUCS stem-separation server.
   "git@github.com:stevelittlefish/stem-separator.git"
