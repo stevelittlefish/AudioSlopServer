@@ -167,16 +167,24 @@ Always budget on `peak_mb`, never the post-job `reserved`/`allocated`.
 Caveat: these are 1–3 samples each. Peaks grow with longer audio, more steps and
 bigger batches, so treat them as a floor and let the telemetry keep accumulating.
 
-### Lazy VRAM load (nvtop-confirmed)
+### Lazy VRAM load (nvtop-confirmed) — FIXED for demucs (2026-09-18)
 
-demucs uses **zero VRAM until its first request** — the container starts, the
-model object is built, but demucs defers the actual weight load onto CUDA until
-the first `separate` call. On nvtop: VRAM flat at 0 while idle, steps up to a
-resident floor on the first job, then stays there; GPU compute spikes per job.
+**Originally:** demucs used **zero VRAM until its first request** — the container
+started and built the model object, but demucs deferred the weight load onto CUDA
+until the first `separate` call. On nvtop: VRAM flat at 0 while idle, stepping up
+to a resident floor on the first job.
 
-Consequence for the arbiter/budget: a freshly-started ("pinned") backend costs
-~0 VRAM until it actually runs a job. Budget against the *post-first-use*
-resident + peak figures, not container start.
+**Now (stem-separator fork):** `make_separator` forces `separator.model.to(device)`
+at startup, so demucs holds its resident VRAM the moment it's up — not on first
+job. This was changed because lazy load defeated ASS's Load/warm button (a
+"loaded" backend still cost 0 until a job) and made a freshly pinned backend's
+budget cost fictional until first use. **Takes effect once the rebuilt image is
+deployed.** The other backends may still lazy-load until each is checked the same
+way — if a warmed backend shows ~0 VRAM in `nvidia-smi`, it's still lazy.
+
+Consequence for the arbiter/budget: with eager load, a freshly-pinned demucs
+costs its real resident VRAM immediately, so the budget is honest from container
+start rather than only *post-first-use*.
 
 ### What this tells us
 
