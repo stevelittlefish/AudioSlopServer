@@ -106,6 +106,26 @@
 
   .empty { color:var(--ink-faint); font-family:var(--mono); font-size:13px; padding:40px 0; text-align:center; }
 
+  .section-head { display:flex; align-items:baseline; gap:14px; margin:38px 0 16px; flex-wrap:wrap; }
+  .section-head h1 { font-size:15px; font-weight:600; margin:0; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-dim); }
+
+  .vram-wrap { background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  .vram-scroll { overflow-x:auto; }
+  table.vram { width:100%; border-collapse:collapse; font-size:13px; min-width:640px; }
+  table.vram th { text-align:left; font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); font-weight:600; padding:12px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  table.vram td { padding:12px 16px; border-bottom:1px solid var(--line); color:var(--ink-dim); vertical-align:middle; }
+  table.vram tr:last-child td { border-bottom:0; }
+  table.vram tr:hover td { background:rgba(255,255,255,.015); }
+  table.vram .svc { color:var(--ink); font-weight:600; }
+  table.vram .num { font-family:var(--mono); font-size:12px; white-space:nowrap; }
+  table.vram .dim { color:var(--ink-faint); }
+  .usebar { position:relative; height:8px; border-radius:999px; background:var(--panel2); overflow:hidden; min-width:110px; border:1px solid var(--line2); }
+  .usebar > span { position:absolute; left:0; top:0; bottom:0; background:var(--accent); box-shadow:0 0 8px rgba(94,224,176,.5); border-radius:999px; transition:width .3s ease; }
+  .usebar.over > span { background:var(--danger); box-shadow:0 0 8px rgba(255,107,107,.6); }
+  .usepct { font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-left:8px; }
+  .usepct.over { color:#ffb3b3; }
+  .vram-empty { padding:26px 16px; color:var(--ink-faint); font-family:var(--mono); font-size:12.5px; }
+
   .toast {
     position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
     background:var(--panel2); border:1px solid var(--line2); color:var(--ink);
@@ -136,6 +156,25 @@
   </div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden>No backends configured.</div>
+
+  <div class="section-head">
+    <h1>VRAM usage</h1>
+    <span class="pill" id="vrambudget"></span>
+    <span class="spacer"></span>
+    <span class="pill">measured from real jobs · peak = torch high-water mark</span>
+  </div>
+  <div class="vram-wrap">
+    <div class="vram-scroll">
+      <table class="vram">
+        <thead><tr>
+          <th>service</th><th>peak (max)</th><th>reserved (max)</th>
+          <th>budget</th><th>peak vs budget</th><th>samples</th><th>last</th>
+        </tr></thead>
+        <tbody id="vrambody"></tbody>
+      </table>
+    </div>
+    <div class="vram-empty" id="vramempty" hidden>No VRAM recorded yet — run a job. Backends report it in <code>/v1/info</code>; a GPU-less box records nothing.</div>
+  </div>
 </main>
 
 <div class="toast" id="toast"></div>
@@ -158,6 +197,8 @@ function relTime(iso) {
   const h = Math.round(m / 60); if (h < 24) return h + "h ago";
   return Math.round(h / 24) + "d ago";
 }
+
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 function toast(msg, isErr) {
   const el = $("#toast");
@@ -240,9 +281,50 @@ async function refresh() {
     renderCounts(list);
     $("#empty").hidden = list.length > 0;
     $("#live").textContent = "live · " + new Date().toLocaleTimeString();
+    refreshVRAM(); // fire-and-forget; VRAM telemetry updates alongside the backends
   } catch (e) {
     $("#live").textContent = "offline";
     toast("Can't reach ASS: " + e.message, true);
+  }
+}
+
+async function refreshVRAM() {
+  try {
+    const r = await fetch("/v1/vram", { headers:{accept:"application/json"} });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    const budget = data.vram_budget_mb || 0;
+    $("#vrambudget").innerHTML = budget
+      ? `card budget <b>${budget.toLocaleString()} MB</b>`
+      : `no VRAM budget set`;
+
+    const rows = (data.services || []).sort((a,b) => b.max_peak_mb - a.max_peak_mb);
+    const body = $("#vrambody");
+    body.innerHTML = "";
+    rows.forEach(s => {
+      const cap = s.budget_pinned_mb || 0;
+      const pct = cap > 0 ? Math.round(100 * s.max_peak_mb / cap) : 0;
+      const over = cap > 0 && s.max_peak_mb > cap;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="svc"></td>
+        <td class="num">${s.max_peak_mb.toLocaleString()} MB</td>
+        <td class="num dim">${s.max_reserved_mb.toLocaleString()} MB</td>
+        <td class="num dim">${cap ? cap.toLocaleString() + " MB" : "—"}</td>
+        <td>
+          <div style="display:flex;align-items:center">
+            <div class="usebar ${over ? "over" : ""}"><span style="width:${Math.min(100,pct)}%"></span></div>
+            <span class="usepct ${over ? "over" : ""}">${cap ? pct + "%" : "—"}</span>
+          </div>
+        </td>
+        <td class="num dim">${s.samples}</td>
+        <td class="num dim">${relTime(s.last_at)}</td>`;
+      tr.querySelector(".svc").textContent = s.service;
+      body.appendChild(tr);
+    });
+    $("#vramempty").hidden = rows.length > 0;
+  } catch (e) {
+    // Non-fatal: the backends view already surfaces connectivity problems.
   }
 }
 
