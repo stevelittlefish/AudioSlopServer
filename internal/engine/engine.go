@@ -112,6 +112,12 @@ func (e *Engine) process(jobID, service string, body []byte, contentType string)
 		return
 	}
 
+	// 3.5. Record the backend's real VRAM use while the model is still resident
+	//      and lease-held. peak_mb captured the inference peak, so this is the
+	//      calibration data for the service's vram_pinned_mb budget. Best-effort:
+	//      a telemetry read must never fail a job.
+	e.recordVRAM(ctx, service, jobID, client)
+
 	// 4. Harvest artifacts into our own store BEFORE the backend can be evicted.
 	for _, a := range final.Artifacts {
 		if err := e.harvest(ctx, client, jobID, backendJobID, a); err != nil {
@@ -124,6 +130,31 @@ func (e *Engine) process(jobID, service string, body []byte, contentType string)
 		log.Printf("[engine] job %s: MarkSucceeded: %v", jobID, err)
 	}
 	log.Printf("[engine] job %s succeeded with %d artifact(s)", jobID, len(final.Artifacts))
+}
+
+// recordVRAM reads the backend's self-reported GPU memory and stores it. Purely
+// telemetry — every failure path just logs, because the job already succeeded and
+// a missing sample is not worth failing it over. A backend on a GPU-less box
+// reports cuda=false; we skip those so the table holds only real numbers.
+func (e *Engine) recordVRAM(ctx context.Context, service, jobID string, client *backend.Client) {
+	info, err := client.Info(ctx)
+	if err != nil {
+		log.Printf("[engine] job %s: reading %s VRAM: %v", jobID, service, err)
+		return
+	}
+	if !info.VRAM.CUDA {
+		return
+	}
+	v := store.VRAMSample{
+		AllocatedMB: info.VRAM.AllocatedMB,
+		ReservedMB:  info.VRAM.ReservedMB,
+		PeakMB:      info.VRAM.PeakMB,
+	}
+	if err := e.store.RecordVRAM(ctx, service, jobID, v); err != nil {
+		log.Printf("[engine] job %s: recording %s VRAM: %v", jobID, service, err)
+		return
+	}
+	log.Printf("[engine] %s VRAM: allocated=%dMB reserved=%dMB peak=%dMB", service, v.AllocatedMB, v.ReservedMB, v.PeakMB)
 }
 
 // poll waits for the backend job to reach a terminal state.

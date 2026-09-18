@@ -117,7 +117,26 @@ func handleInfo(w http.ResponseWriter, _ *http.Request) {
 		"device": "cpu (there is no GPU, that's the whole point)",
 		"verb":   verbName,
 		"parked": isParked(),
+		// Synthetic VRAM so ASS's /v1/vram telemetry path can be exercised on the
+		// GPU-less dev box. A per-verb base (so services differ) plus a little
+		// jitter (so peaks vary), clearly labelled mock — nobody should mistake
+		// these for real numbers.
+		"vram": mockVRAM(),
 	})
+}
+
+// mockVRAM fabricates a plausible-but-fake VRAM reading. The base scales with the
+// verb name's length purely so different mock services report different sizes.
+func mockVRAM() map[string]any {
+	base := 800 + len(verbName)*300
+	jitter := int(time.Now().UnixNano()/1e6) % 250
+	return map[string]any{
+		"cuda":         true,
+		"device":       "cuda:0 (mock — no real card)",
+		"allocated_mb": base + jitter,
+		"reserved_mb":  base + 300 + jitter,
+		"peak_mb":      base + 600 + jitter,
+	}
 }
 
 func handleSubmit(w http.ResponseWriter, r *http.Request) {

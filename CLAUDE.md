@@ -249,7 +249,11 @@ means we don't adapt to N different backend shapes — we make all N conform to
 maps stem-separator's `stems[]` onto `artifacts[]` — but the goal is one shape.)
 
 - `GET  /health` — readiness probe.
-- `GET  /v1/info` — model, device, capabilities.
+- `GET  /v1/info` — model, device, capabilities, and a `vram` block (our
+  addition: `{cuda, device, allocated_mb, reserved_mb, peak_mb}`). The backend
+  holds the CUDA context so it can read the card; ASS deliberately can't, so it
+  reads these over HTTP and records them after each job (`peak_mb` is torch's
+  high-water mark = the inference peak). `cuda: false` on a GPU-less box.
 - `POST /v1/<verb>` — submit a job, returns `{ job_id, state }`. (`verb` is
   service-specific: `separate`, `generate`, `transcribe`, `align`, …)
 - `GET  /v1/jobs/{id}` — `{ state: queued|running|succeeded|failed,

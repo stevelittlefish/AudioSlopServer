@@ -47,6 +47,27 @@ type Artifact struct {
 	Path        string `json:"-"` // on-disk path in the results store; not for clients
 }
 
+// VRAMSample is one reading of a backend's GPU memory (MB), taken from its
+// /v1/info after a job. PeakMB is the process high-water mark, so it's the
+// inference peak even though we read it once the job is done.
+type VRAMSample struct {
+	AllocatedMB int `json:"allocated_mb"`
+	ReservedMB  int `json:"reserved_mb"`
+	PeakMB      int `json:"peak_mb"`
+}
+
+// VRAMSummary is the per-service rollup for the /v1/vram view: how much a service
+// has actually used across all its samples. The Max* fields are the numbers that
+// matter for setting vram_pinned_mb; Samples/LastAt show how much data backs them.
+type VRAMSummary struct {
+	Service        string    `json:"service"`
+	Samples        int       `json:"samples"`
+	MaxAllocatedMB int       `json:"max_allocated_mb"`
+	MaxReservedMB  int       `json:"max_reserved_mb"`
+	MaxPeakMB      int       `json:"max_peak_mb"`
+	LastAt         time.Time `json:"last_at"`
+}
+
 // Store wraps the database. One per process.
 type Store struct {
 	db *sql.DB
@@ -99,7 +120,22 @@ CREATE TABLE IF NOT EXISTS artifacts (
     path         TEXT NOT NULL,
     bytes        INTEGER NOT NULL,
     PRIMARY KEY (job_id, name)
-);`
+);
+-- One row per VRAM reading ASS takes off a backend (from its /v1/info) right
+-- after a job finishes, while the model is still resident. peak_mb is the real
+-- prize: torch's high-water mark, so it's the inference peak even read post-job.
+-- This is the raw data behind "how much does each service actually use" and the
+-- calibration source for each service's vram_pinned_mb budget.
+CREATE TABLE IF NOT EXISTS vram_samples (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    service      TEXT NOT NULL,
+    job_id       TEXT,
+    allocated_mb INTEGER NOT NULL,
+    reserved_mb  INTEGER NOT NULL,
+    peak_mb      INTEGER NOT NULL,
+    at           INTEGER NOT NULL   -- unix nanos
+);
+CREATE INDEX IF NOT EXISTS vram_samples_service ON vram_samples(service);`
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("applying schema: %w", err)
 	}
@@ -225,6 +261,45 @@ func (s *Store) artifactsFor(ctx context.Context, jobID string) ([]Artifact, err
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// RecordVRAM stores one VRAM reading for a service (job_id optional — the job
+// whose completion triggered the read). Best-effort telemetry: callers log and
+// move on rather than failing a job over it.
+func (s *Store) RecordVRAM(ctx context.Context, service, jobID string, v VRAMSample) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO vram_samples (service, job_id, allocated_mb, reserved_mb, peak_mb, at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		service, jobID, v.AllocatedMB, v.ReservedMB, v.PeakMB, time.Now().UnixNano())
+	if err != nil {
+		return fmt.Errorf("recording vram for %q: %w", service, err)
+	}
+	return nil
+}
+
+// VRAMSummary returns the per-service rollup of every VRAM sample recorded so
+// far, ordered by service. The empty slice (not nil error) when nothing's been
+// measured yet.
+func (s *Store) VRAMSummary(ctx context.Context) ([]VRAMSummary, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT service, COUNT(*), MAX(allocated_mb), MAX(reserved_mb), MAX(peak_mb), MAX(at)
+		 FROM vram_samples GROUP BY service ORDER BY service`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []VRAMSummary{}
+	for rows.Next() {
+		var v VRAMSummary
+		var lastAt int64
+		if err := rows.Scan(&v.Service, &v.Samples, &v.MaxAllocatedMB, &v.MaxReservedMB, &v.MaxPeakMB, &lastAt); err != nil {
+			return nil, err
+		}
+		v.LastAt = time.Unix(0, lastAt)
+		out = append(out, v)
 	}
 	return out, rows.Err()
 }

@@ -7,6 +7,56 @@ import (
 	"testing"
 )
 
+func TestVRAMSamples(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	// Two demucs readings + one yue reading; the summary should roll each service
+	// up to its per-field MAX (the number that matters for the budget).
+	must := func(service string, v VRAMSample) {
+		if err := st.RecordVRAM(ctx, service, "job1", v); err != nil {
+			t.Fatalf("RecordVRAM: %v", err)
+		}
+	}
+	must("demucs", VRAMSample{AllocatedMB: 1000, ReservedMB: 1200, PeakMB: 1500})
+	must("demucs", VRAMSample{AllocatedMB: 1100, ReservedMB: 1100, PeakMB: 1800})
+	must("yue", VRAMSample{AllocatedMB: 7000, ReservedMB: 7500, PeakMB: 8200})
+
+	sums, err := st.VRAMSummary(ctx)
+	if err != nil {
+		t.Fatalf("VRAMSummary: %v", err)
+	}
+	if len(sums) != 2 {
+		t.Fatalf("want 2 services, got %d: %+v", len(sums), sums)
+	}
+	byName := map[string]VRAMSummary{sums[0].Service: sums[0], sums[1].Service: sums[1]}
+	if d := byName["demucs"]; d.Samples != 2 || d.MaxPeakMB != 1800 || d.MaxReservedMB != 1200 {
+		t.Fatalf("demucs rollup wrong: %+v", d)
+	}
+	if y := byName["yue"]; y.Samples != 1 || y.MaxPeakMB != 8200 {
+		t.Fatalf("yue rollup wrong: %+v", y)
+	}
+}
+
+func TestVRAMSummaryEmpty(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	sums, err := st.VRAMSummary(context.Background())
+	if err != nil {
+		t.Fatalf("VRAMSummary: %v", err)
+	}
+	if len(sums) != 0 {
+		t.Fatalf("want empty, got %+v", sums)
+	}
+}
+
 func TestJobLifecycle(t *testing.T) {
 	ctx := context.Background()
 	st, err := Open(filepath.Join(t.TempDir(), "test.db"))

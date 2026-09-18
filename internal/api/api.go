@@ -41,6 +41,7 @@ func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /v1/backends", a.handleBackends)
+	mux.HandleFunc("GET /v1/vram", a.handleVRAM)
 	// Operator controls (Slice 3, Part A): drive a backend's residency by hand.
 	// All route through the arbiter, so leases still protect in-flight jobs.
 	// Gated behind [web] (on by default) — these are real "free/kill the GPU"
@@ -188,6 +189,33 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		out = append(out, bv)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"backends": out})
+}
+
+// handleVRAM serves the per-service VRAM rollup: how much each backend has
+// actually used, from the samples ASS records after every job. The budgeted
+// figure from config rides along so you can eyeball measured-vs-budget in one
+// place — the point being to catch a service whose real peak is creeping toward
+// (or past) its vram_pinned_mb.
+func (a *API) handleVRAM(w http.ResponseWriter, r *http.Request) {
+	summaries, err := a.store.VRAMSummary(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	type row struct {
+		store.VRAMSummary
+		BudgetPinnedMB int `json:"budget_pinned_mb"`
+		BudgetParkedMB int `json:"budget_parked_mb"`
+	}
+	out := []row{}
+	for _, s := range summaries {
+		svc := a.cfg.Services[s.Service]
+		out = append(out, row{VRAMSummary: s, BudgetPinnedMB: svc.VRAMPinnedMB, BudgetParkedMB: svc.VRAMParkedMB})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"vram_budget_mb": a.cfg.GPU.VRAMBudgetMB,
+		"services":       out,
+	})
 }
 
 // --- operator controls ----------------------------------------------------

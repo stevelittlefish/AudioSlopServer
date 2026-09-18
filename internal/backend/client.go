@@ -91,6 +91,45 @@ func (c *Client) Status(ctx context.Context, jobID string) (Job, error) {
 	return j, nil
 }
 
+// VRAMStats is a backend's self-reported GPU memory, from /v1/info. Every fork
+// includes it (see the backend contract): the backend can read the card because
+// it holds the CUDA context; ASS, which deliberately doesn't, reads it over HTTP.
+type VRAMStats struct {
+	CUDA        bool   `json:"cuda"`
+	Device      string `json:"device"`
+	AllocatedMB int    `json:"allocated_mb"`
+	ReservedMB  int    `json:"reserved_mb"`
+	PeakMB      int    `json:"peak_mb"`
+}
+
+// Info is the slice of /v1/info ASS cares about: the VRAM self-report. The rest
+// of that response (model, capabilities, …) varies per service and is ignored.
+type Info struct {
+	VRAM VRAMStats `json:"vram"`
+}
+
+// Info fetches the backend's /v1/info. Used right after a job to record the
+// backend's real VRAM use while the model is still resident.
+func (c *Client) Info(ctx context.Context) (Info, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/v1/info", nil)
+	if err != nil {
+		return Info{}, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return Info{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return Info{}, fmt.Errorf("backend info: %s", statusLine(resp))
+	}
+	var i Info
+	if err := json.NewDecoder(resp.Body).Decode(&i); err != nil {
+		return Info{}, fmt.Errorf("decoding info: %w", err)
+	}
+	return i, nil
+}
+
 // Download opens one artifact's bytes. The caller must Close the returned reader.
 func (c *Client) Download(ctx context.Context, jobID, name string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,

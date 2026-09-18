@@ -162,6 +162,21 @@ The arbiter keeps `Σ pinned vram_pinned_mb + Σ parked vram_parked_mb` under
 these declared numbers (a soft budget), so an under-declared peak can still OOM —
 the fix is to bump `vram_pinned_mb`.
 
+## Automatic recording (ASS collects this itself now)
+
+Beyond the one-off `measure-vram.sh` runs, ASS records real VRAM continuously:
+every backend reports its GPU memory in `/v1/info` (`allocated_mb`, `reserved_mb`,
+`peak_mb` — the last is torch's high-water mark, so it's the inference peak), and
+ASS reads it after each job (model still resident) into the `vram_samples` table.
+
+- **`GET /v1/vram`** returns the per-service rollup — `max_peak_mb`,
+  `max_reserved_mb`, sample count — alongside each service's configured
+  `vram_pinned_mb`/`vram_parked_mb`, so you can eyeball measured-vs-budget.
+- This is the calibration loop for the budget: run real traffic, then set each
+  service's `vram_pinned_mb` from its observed `max_peak_mb` (+ headroom). No GPU
+  access on ASS, no polling — one HTTP read per job. `cuda:false` backends (the
+  dev box) are skipped, so the table holds only real numbers.
+
 ## Method (so numbers stay comparable)
 
 `nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits` (MiB), sampled
