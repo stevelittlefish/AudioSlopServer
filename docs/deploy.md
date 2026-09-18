@@ -42,6 +42,9 @@ From the AudioSlopServer repo root:
 
 ```sh
 sudo mkdir -p /srv/ass/data         # ASS's job DB + harvested artifacts land here
+# Optional: finetune LoRAs for a backend go under /srv/ass/loras/<service>, e.g.
+#   /srv/ass/loras/stableaudio/limp-bizkit-4k.safetensors
+# then enable them in ass.toml with [services.stableaudio].command (see that file).
 docker compose up --build -d        # builds ass:local, starts it on the host network
 docker compose logs -f ass          # ASCII-art banner, then "listening on :2645"
 curl -s localhost:2645/health       # {"status":"ok","service":"ASS"}

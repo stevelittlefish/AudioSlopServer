@@ -95,8 +95,10 @@ shm_size_mb = 8192      # SA3 wants elbow room (its compose sets 8gb)
 # image's CMD already loads `--model medium`.
 env     = { HF_HOME = "/cache/stableaudio/huggingface", TORCH_HOME = "/cache/stableaudio/torch", HF_TOKEN_PATH = "/cache/hf-token" }
 # The /loras mount is only needed if you load a finetune LoRA (see `command`
-# below); harmless to leave when you don't.
-volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs", "/srv/stable-audio-3/loras:/loras:ro"]
+# below); harmless to leave when you don't. Like everything else ASS owns, the
+# LoRAs live under /srv/ass — here /srv/ass/loras/stableaudio, mirroring the
+# per-service outputs dir. Stage keepers there with clean names.
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs", "/srv/ass/loras/stableaudio:/loras:ro"]
 
 # LoRAs. The image's default CMD loads the base `--model medium`. To load one or
 # more finetune LoRAs at startup — like the standalone service's compose did —
@@ -104,7 +106,7 @@ volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs",
 # REPLACES the image CMD, so `--model medium` is repeated here. Load ORDER sets
 # each LoRA's index in the /v1/generate `loras` array (first = index 0), which is
 # the order SlopBC reads back from /v1/backends/stableaudio/info. Stage the
-# .safetensors under the host /loras dir mounted above. Uncomment to enable:
+# .safetensors under /srv/ass/loras/stableaudio (mounted at /loras). Uncomment:
 #
 # command = [
 #   "/app/.venv/bin/python", "/app/run_api.py",
