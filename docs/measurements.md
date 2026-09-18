@@ -82,6 +82,54 @@ resident + peak figures, not container start.
   tenants leave free. This is the concrete reason the budget is a config knob and
   not just "the card size."
 
+## ACE-Step park analysis (predicted — awaiting box measurement)
+
+`ass.toml` now sets `acestep.evict = "park"`. The reasoning, and the numbers to
+confirm on `ai.lemon.com`:
+
+**Why ACE-Step is the best park candidate, not the worst.** The original worry was
+"the XL DiT is huge, parking it is expensive." But ACE-Step runs with
+`ACESTEP_OFFLOAD_TO_CPU=true` + `ACESTEP_LM_OFFLOAD_TO_CPU=true`, so between renders
+the VAE, Qwen text-encoder and 1.7B LM planner **already live in CPU RAM** — only
+the DiT (~8–9GB, 4B XL-turbo bf16) sits on the card. The fork's `/park` moves
+`model`(DiT)+`vae`+`text_encoder` to CPU and `empty_cache()`s; the LM isn't even in
+that list because LM-offload already keeps it off the GPU. So **park has exactly one
+big thing to move: the DiT.** One ~9GB Host↔Device copy.
+
+**Predicted numbers (to verify):**
+
+| Metric | Prediction | Basis |
+|---|---|---|
+| Unpark latency | **~0.5–1.5s** | one ~9GB DiT copy over the 3090's x16 PCIe (gen4, ~13GB/s unpinned → 20+ pinned). SA3 territory. |
+| Cold start avoided (the payoff) | **~10–60s** | `stop` = kill container → reload DiT from disk/page-cache + re-init CUDA + re-init LM. Park buys all of this back for a ~1s cost. |
+| Parked RAM | **~14GB** | DiT ~9 + LM 1.7B ~3.5 + text-enc ~1.2 + VAE ~0.3. Trivial on 128GB. |
+| Parked VRAM (context tax) | **~0.5–2GB (UNCONFIRMED)** | bigger than demucs's 354 MiB — ACE-Step's process holds far more torch/kernel/workspace state. The one number that actually needs measuring. |
+
+**Does it fit the shared GPU 0?** Usable ≈ 24 − 2.1 (wyoming-whisper) − 0.4 (driver)
+≈ **21.5GB**. ACE-Step pinned (~9GB) + SA3 parked context (~0.5–1GB) + demucs parked
+context (~0.35GB) ≈ 10–11GB. Comfortably under. **VRAM is not the constraint; the
+128GB RAM certainly isn't.** The only way this doesn't pay off is if the measured
+context tax is surprisingly huge (many GB) — unlikely, but that's what the
+measurement is for.
+
+**Measure on the box (fill these in):** run one `generate` job first (lazy load —
+like demucs, the DiT likely isn't on CUDA until the first job), then isolate the
+ACE-Step pid and read process VRAM across a park cycle, and time the unpark:
+
+```sh
+# ACE-Step's process VRAM, resident (post-first-job) vs parked:
+nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv,noheader | grep -i ace
+curl -sf -X POST http://localhost:2766/park   # then re-read the line above
+# Unpark latency (wall clock of the fast path):
+time curl -sf -X POST http://localhost:2766/unpark
+```
+
+resident − parked = the DiT freed; the residual = ACE-Step's real `context_tax_mb`.
+Record the row in "Per-model VRAM footprint" above and, if the context tax differs
+from demucs's 400, note that per-backend budgeting will eventually need per-service
+tax values (today `gpu.context_tax_mb` is one global number — see the deferred
+VRAM-budget item in TODO.md).
+
 ## Method (so numbers stay comparable)
 
 `nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits` (MiB), sampled
