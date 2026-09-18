@@ -92,10 +92,18 @@ Done in slice 2:
       non-leased pinned backends one at a time until the newcomer fits. Covered by
       TestVRAMBudget.
 
+- [x] VRAM self-reporting + recording. Every backend fork reports its GPU memory
+      in `/v1/info` (`allocated_mb`/`reserved_mb`/`peak_mb`); ASS reads it after each
+      job into the `vram_samples` table and serves the per-service rollup at
+      `GET /v1/vram` next to the configured budget. peak_mb is torch's high-water
+      mark, so one post-job read captures the inference peak — no GPU on ASS, no
+      polling, no deps. The calibration loop for the estimates below.
+
 Still to do here:
-- [ ] Confirm the estimated `vram_pinned_mb` / `vram_parked_mb` on the box with
-      scripts/measure-vram.sh — demucs is measured; SA3, ACE-Step and YuE are
-      estimates flagged UNMEASURED in ass.toml. The budget is only as good as these.
+- [ ] Confirm the estimated `vram_pinned_mb` / `vram_parked_mb` on the box — now
+      easiest via real traffic + `GET /v1/vram` (demucs measured; SA3, ACE-Step,
+      YuE flagged UNMEASURED in ass.toml). Deploy the new backend images first so
+      they emit the vram block.
 - [ ] Hardening (later): the budget is SOFT — ASS trusts the declared numbers, it
       doesn't watch the card. A future step could reconcile against live nvidia-smi
       and refuse to pin when the card is actually fuller than declared.
