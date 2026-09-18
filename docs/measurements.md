@@ -5,6 +5,40 @@ per-parked context tax, "don't evict the small ones") is guesswork until we
 have them. This is where they live. Add rows as we measure more models and more
 machines — this file is the input to the eventual concrete budget defaults.
 
+## Image layers (why pulling backends is many × ~4.5GB)
+
+Every backend image is three big strata, each a single Docker layer: the **CUDA
+base image** (`nvidia/cuda:*-runtime`, ~2.7GB; `-devel` ~5–6GB), the **torch
+layer** (the cuXYZ wheels bundle their *own* copy of the CUDA libs — cuDNN,
+cuBLAS, NCCL — so `pip install torch` alone is ~4.5GB), and the **rest of the
+deps**. That's the "several 4.5GB steps."
+
+Docker layers are content-addressed, so two images share a layer on pull only
+when it's byte-identical. The base image layers **are** shared when the `FROM`
+tag matches exactly (they're the same registry layers). So we pin the backends
+that can agree to one base tag:
+
+| backend | base | torch | shares base? |
+|---|---|---|---|
+| stem-separator | `cuda:12.8.1-runtime` | 2.10.0 / cu128 | ✅ |
+| ACE-Step | `cuda:12.8.1-runtime` | 2.10.0 / cu128 | ✅ |
+| YuE | `cuda:12.8.1-runtime` | 2.10.0 / cu128 | ✅ |
+| stable-audio | `cuda:12.6.3-devel` | 2.7.1 / cu126 | ❌ outlier |
+
+**stable-audio can't join** without risk: its flash-attn is a *prebuilt* wheel
+locked to `cu126torch2.7`, and its whole `uv.lock` is pinned to torch 2.7.1 —
+moving it means re-sourcing that wheel for torch 2.10 and re-resolving the lock
+(which ripples through pytorch-lightning et al.). Left as-is on purpose.
+
+**What this fixes and what it doesn't.** Unifying the base tag makes the CUDA
+base layer one shared pull across the three (was three different bases). It does
+**not** dedupe the ~4.5GB *torch* layer — that's built locally on top with a
+per-image instruction, so each image still carries its own. To collapse the
+torch layer too we'd need a shared base image (`FROM ass-cuda-torch:12.8.1-2.10`
+that already contains torch), which all three then build on. That's a bigger
+change — a new published image + cross-repo build coupling — so it's a separate
+call, not done here.
+
 ## Servers
 
 | Host | GPU | VRAM | System RAM | Notes |
