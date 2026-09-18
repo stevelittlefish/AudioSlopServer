@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ASS · Admin</title>
+<link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
 <style>
   :root {
     --bg:#0b0d10; --bg2:#12151a; --panel:#151920; --panel2:#1b2028;
@@ -37,6 +38,7 @@
     background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);
   }
   .brand { display:flex; align-items:baseline; gap:12px; }
+  .brand .logomark { width:28px; height:28px; align-self:center; display:block; user-select:none; filter:drop-shadow(0 0 10px rgba(94,224,176,.35)); }
   .brand .logo {
     font-family:var(--mono); font-weight:700; font-size:30px;
     line-height:1; letter-spacing:-.02em; color:var(--accent);
@@ -139,6 +141,7 @@
 <body>
 <header class="top">
   <div class="brand">
+    <img class="logomark" src="/assets/logo.svg" width="26" height="26" alt="">
     <span class="logo">ass</span>
     <span class="sub"><b>Audio Slop Server</b> · admin console</span>
   </div>

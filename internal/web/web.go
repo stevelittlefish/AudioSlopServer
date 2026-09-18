@@ -22,7 +22,7 @@ import (
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
-//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html assets/test.css assets/test-common.js
+//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html assets/test.css assets/test-common.js assets/logo.svg
 var assets embed.FS
 
 // servicePages maps a configured service name to its bespoke test page. A
@@ -53,6 +53,13 @@ func Register(mux *http.ServeMux, cfg *config.Config) {
 	// http.FileServer sniffer for two well-known types.
 	mux.Handle("GET /assets/test.css", asset("assets/test.css", "text/css; charset=utf-8"))
 	mux.Handle("GET /assets/test-common.js", asset("assets/test-common.js", "text/javascript; charset=utf-8"))
+
+	// The logo, used both as the header mark and (via <link rel="icon">) the
+	// favicon — one SVG, no PNG/ICO conversion step (CLAUDE.md: no build step).
+	// /favicon.ico is served too so the browser's automatic probe doesn't 404.
+	logo := asset("assets/logo.svg", "image/svg+xml")
+	mux.Handle("GET /assets/logo.svg", logo)
+	mux.Handle("GET /favicon.ico", logo)
 
 	// Per-service test page. We reject unknown services up front, then serve
 	// the bespoke page if one exists or the generic fallback otherwise. The
