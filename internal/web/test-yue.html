@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en" data-page="test">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASS · yue</title>
+<link rel="stylesheet" href="/assets/test.css">
+<style>
+  /* Two-tab affordance (Form / JSON) — the form builds the JSON, the JSON tab
+     shows exactly what will be sent and lets you tweak it by hand. */
+  .tabs{display:flex;gap:0;margin:0 0 14px;}
+  .viewsec{display:none;}
+  .viewsec.show{display:block;}
+  #jsonbox{width:100%;min-height:320px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;white-space:pre;tab-size:2;}
+  .jsonwarn{margin-top:8px;}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">ass</span>
+    <span class="sub"><b id="svcname">yue</b> · <span id="svcverb">generate</span></span>
+  </div>
+  <span class="spacer"></span>
+  <a class="back" href="/admin">‹ admin</a>
+</header>
+
+<main>
+  <section class="panel" id="formpanel">
+    <h2>Generate a song</h2>
+    <p class="hint">YuE2-3B — a <b>style</b> description + <b>lyrics</b> become an ABC score, then semantic tokens, then a full song. Returns audio.flac plus the score, lyrics and metadata. Lyrics are required; segment them with tags like <code>[verse]</code> / <code>[chorus]</code>. POST /v1/yue/jobs. <a href="#" id="loadex">load an example ↓</a></p>
+
+    <div id="form">
+      <div class="seg tabs" id="viewtabs">
+        <button type="button" data-view="form" class="on">Form</button>
+        <button type="button" data-view="json">JSON</button>
+      </div>
+
+      <!-- ======================= FORM VIEW ======================= -->
+      <div class="viewsec show" data-view="form">
+        <div class="field"><label>Style / genre (natural language — instruments, mood, voice, tempo)</label>
+          <textarea data-p="style" placeholder="acoustic pop, warm piano, female vocal, gentle, nostalgic, 90 bpm"></textarea></div>
+
+        <div class="field"><label>Lyrics (required — use [verse] / [chorus] / [bridge] section tags)</label>
+          <textarea data-p="lyrics" style="min-height:160px;" placeholder="[verse]
+Morning light on an empty street
+Coffee going cold, I can't sleep
+[chorus]
+But I'll carry on, carry on
+Till the shadows of the night are gone"></textarea></div>
+
+        <div class="row">
+          <div class="field"><label>Stage</label>
+            <select data-p="stage">
+              <option value="audio" selected>audio — full song</option>
+              <option value="plan">plan — ABC score only (fast)</option>
+            </select></div>
+          <div class="field"><label>Chain-of-thought planning</label>
+            <select data-p="cot">
+              <option value="" selected>server default</option>
+              <option value="full">full</option>
+              <option value="melody">melody</option>
+              <option value="off">off</option>
+            </select></div>
+          <div class="field"><label>Output format</label>
+            <select data-p="file_format"><option value="flac" selected>flac</option><option value="wav">wav</option></select></div>
+        </div>
+
+        <div class="row">
+          <div class="field"><label>Seed (blank = random)</label><input type="number" data-p="seed" min="0" placeholder="random"></div>
+          <div class="field"><label>CFG scale (0–20, blank = default)</label><input type="number" data-p="cfg_scale" min="0" max="20" step="0.5" placeholder="default"></div>
+        </div>
+
+        <details class="adv">
+          <summary>advanced</summary>
+          <div class="field"><label>Pre-supplied ABC score (blank = let YuE plan it; providing one skips planning)</label>
+            <textarea data-p="abc" style="min-height:100px;font-family:ui-monospace,Menlo,Consolas,monospace;" placeholder="X:1&#10;T:...&#10;(leave blank unless you have a score)"></textarea></div>
+          <div class="row">
+            <div class="field"><label>abc_sampling (JSON object, plan-phase knobs)</label>
+              <textarea data-p="abc_sampling" style="min-height:64px;font-family:ui-monospace,Menlo,Consolas,monospace;" placeholder='{"temperature": 0.9}'></textarea></div>
+            <div class="field"><label>semantic_sampling (JSON object, semantic-phase knobs)</label>
+              <textarea data-p="semantic_sampling" style="min-height:64px;font-family:ui-monospace,Menlo,Consolas,monospace;" placeholder='{"top_p": 0.95}'></textarea></div>
+          </div>
+        </details>
+      </div>
+
+      <!-- ======================= JSON VIEW ======================= -->
+      <div class="viewsec" data-view="json">
+        <p class="note">This is the exact request body ASS forwards to YuE. It's regenerated from the form each time you open this tab; edit it freely — while this tab is active, <b>Run</b> submits what's here (not the form).</p>
+        <textarea id="jsonbox" spellcheck="false"></textarea>
+        <div class="status jsonwarn" id="jsonwarn" hidden></div>
+      </div>
+    </div>
+
+    <div style="margin-top:6px;"><button class="primary" id="submit" disabled>Run</button></div>
+  </section>
+
+  <section class="panel" id="resultpanel" hidden>
+    <h2>Result</h2>
+    <div class="status" id="status"></div>
+    <div class="art" id="art" style="margin-top:16px;"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/assets/test-common.js"></script>
+<script>
+"use strict";
+
+// Read the form into the YuE request params. Sends ONLY known fields — the
+// backend forbids extras (422). Numeric/JSON parse errors throw; missing lyrics
+// is NOT enforced here (so the JSON preview works mid-edit) — submit enforces it.
+function formToParams(root){
+  const p = {};
+  const style = val(root,"style"); if (style) p.style = style;
+  const lyrics = val(root,"lyrics"); if (lyrics) p.lyrics = lyrics;
+
+  const stage = val(root,"stage"); if (stage) p.stage = stage;
+  const cot = val(root,"cot"); if (cot) p.cot = cot;               // "" = server default -> omit
+  const ff = val(root,"file_format"); if (ff) p.file_format = ff;
+
+  const seed = numOpt(root,"seed"); if (seed!==undefined) p.seed = seed;   // blank -> omit -> server random
+  const cfg = numOpt(root,"cfg_scale"); if (cfg!==undefined) p.cfg_scale = cfg;
+
+  const abc = val(root,"abc"); if (abc) p.abc = abc;
+  const as = val(root,"abc_sampling");
+  if (as) { try { p.abc_sampling = JSON.parse(as); } catch(e){ throw new Error("abc_sampling is not valid JSON"); } }
+  const ss = val(root,"semantic_sampling");
+  if (ss) { try { p.semantic_sampling = JSON.parse(ss); } catch(e){ throw new Error("semantic_sampling is not valid JSON"); } }
+  return p;
+}
+
+function activeView(){ const b = document.querySelector('#viewtabs .on'); return b ? b.dataset.view : "form"; }
+
+function showView(root, view){
+  document.querySelectorAll('#viewtabs button').forEach(b => b.classList.toggle('on', b.dataset.view===view));
+  root.querySelectorAll('.viewsec').forEach(s => s.classList.toggle('show', s.dataset.view===view));
+  if (view === "json") {
+    // Regenerate the JSON from the current form state whenever we open the tab.
+    try {
+      $("#jsonbox").value = JSON.stringify(formToParams(root), null, 2);
+      $("#jsonwarn").hidden = true;
+    } catch(e){
+      $("#jsonwarn").hidden = false;
+      $("#jsonwarn").className = "status jsonwarn err";
+      $("#jsonwarn").textContent = "form has an issue: " + e.message + " — fix it on the Form tab";
+    }
+  }
+}
+
+window.ASS_TEST = {
+  ready(root){
+    document.querySelectorAll('#viewtabs button').forEach(b => {
+      b.addEventListener('click', () => showView(root, b.dataset.view));
+    });
+    // Example loader — the biggest help when you've no idea what to write.
+    const ex = document.getElementById('loadex');
+    if (ex) ex.addEventListener('click', (e) => {
+      e.preventDefault();
+      root.querySelector('[data-p="style"]').value = "acoustic pop, warm piano, soft female vocal, gentle, nostalgic, 90 bpm";
+      root.querySelector('[data-p="lyrics"]').value =
+        "[verse]\nMorning light on an empty street\nCoffee going cold, I can't sleep\n[chorus]\nBut I'll carry on, carry on\nTill the shadows of the night are gone";
+      showView(root, "form");
+      toast("example loaded — hit Run, or peek at the JSON tab");
+    });
+  },
+  build(root){
+    let params;
+    if (activeView() === "json") {
+      const raw = $("#jsonbox").value.trim();
+      try { params = JSON.parse(raw || "{}"); }
+      catch(e){ throw new Error("JSON tab: " + e.message); }
+    } else {
+      params = formToParams(root);
+    }
+    if (!params.lyrics || !String(params.lyrics).trim()) throw new Error("lyrics are required");
+    return { params, files: [], encoding: "json" };
+  },
+};
+</script>
+</body>
+</html>
+</content>

@@ -22,7 +22,7 @@ import (
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
-//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html assets/test.css assets/test-common.js
+//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html assets/test.css assets/test-common.js
 var assets embed.FS
 
 // servicePages maps a configured service name to its bespoke test page. A
@@ -32,6 +32,7 @@ var servicePages = map[string]string{
 	"demucs":      "test-demucs.html",
 	"stableaudio": "test-stableaudio.html",
 	"acestep":     "test-acestep.html",
+	"yue":         "test-yue.html",
 }
 
 // Register mounts the console routes onto mux. Called only when the web console

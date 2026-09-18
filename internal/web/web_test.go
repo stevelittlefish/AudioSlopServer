@@ -17,6 +17,7 @@ func testMux() *http.ServeMux {
 		"demucs":      {},
 		"stableaudio": {},
 		"acestep":     {},
+		"yue":         {},
 		"whisper":     {}, // configured but has no bespoke page -> generic fallback
 	}})
 	return mux
@@ -35,6 +36,7 @@ func TestPerServicePages(t *testing.T) {
 		"/test/demucs":      "Separate stems",
 		"/test/stableaudio": "Generate audio",
 		"/test/acestep":     "Generate a song",
+		"/test/yue":         "YuE2-3B", // both acestep+yue say "Generate a song"; this marker is yue-only
 	}
 	for path, marker := range cases {
 		rec := get(t, mux, path)
