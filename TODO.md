@@ -467,6 +467,12 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       dark. Watch the rich flows SlopBC relies on: cover/repaint (multipart source
       audio), and `audio_codes` reuse — all preserved on the backend, but the
       client path changes.
+- [ ] **YuE fork: randomize a missing seed.** `SongRequest.seed` defaults to the
+      constant `831001`, so an omitted seed renders the SAME song byte-for-byte
+      every time — "blank = random" is a lie at the backend. The YuE tester now
+      generates a random seed client-side as a stopgap, but the real fix is in
+      stevelittlefish/yue-inference-server (roll a random seed when the request
+      omits one). ACE-Step has the same class of trap — see SlopBC's notes.
 - [ ] Onboard remaining backends (YuE, Whisper, aligner)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only
