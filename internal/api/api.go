@@ -56,6 +56,12 @@ func (a *API) Handler() http.Handler {
 	} else {
 		log.Printf("[api] web console disabled (web.enabled = false) — operator controls not served")
 	}
+	// Read-only backend introspection: forward a backend's own /v1/info (model,
+	// capabilities, the Stable Audio LoRA list). ASS holds no CUDA context and
+	// can't read a card, so clients that want what the backend knows ask here and
+	// ASS proxies it. Not gated behind [web] — it reads, it can't free or kill the
+	// GPU — but it will make the backend resident to answer.
+	mux.HandleFunc("GET /v1/backends/{service}/info", a.handleBackendInfo)
 	mux.HandleFunc("POST /v1/{service}/jobs", a.handleSubmit)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.handleJob)
 	mux.HandleFunc("GET /v1/jobs/{id}/result", a.handleResultList)
@@ -90,6 +96,25 @@ func (a *API) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID})
+}
+
+// handleBackendInfo forwards a backend's /v1/info to the caller, making the
+// backend resident first if it isn't. The body is passed through verbatim (it's
+// already JSON), so a client sees exactly what the backend reports.
+func (a *API) handleBackendInfo(w http.ResponseWriter, r *http.Request) {
+	service := r.PathValue("service")
+	if _, ok := a.cfg.Services[service]; !ok {
+		writeErr(w, http.StatusNotFound, "unknown service %q", service)
+		return
+	}
+	raw, err := a.engine.BackendInfo(r.Context(), service)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "reading %s info: %v", service, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
 }
 
 // jobView is the client-facing job shape: the stored job plus its artifacts.

@@ -248,6 +248,10 @@ What's working today:
 
 - `POST /v1/{service}/jobs` → submit; `GET /v1/jobs/{id}` → poll;
   `GET /v1/jobs/{id}/result[/{name}]` → download; `GET /v1/backends` → status.
+- `GET /v1/backends/{service}/info` → forwards a backend's own `/v1/info`
+  (model, capabilities, the Stable Audio LoRA list). Read-only, but it makes the
+  backend resident to answer — ASS holds no CUDA context, so this is how a client
+  reads what only the backend knows.
 - On-demand container lifecycle (create → health-wait → forward) and
   harvest-on-completion into a sqlite-tracked, on-disk results store.
 - One dependency-light Go binary. `./run.sh -config ass.dev.toml`.

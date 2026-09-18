@@ -132,6 +132,24 @@ func (e *Engine) process(jobID, service string, body []byte, contentType string)
 	log.Printf("[engine] job %s succeeded with %d artifact(s)", jobID, len(final.Artifacts))
 }
 
+// BackendInfo makes a backend resident (queuing behind any swap) and returns its
+// /v1/info body verbatim. It's the read-only counterpart to Submit: ASS holds no
+// CUDA context and can't read a card, so a client that wants what only the backend
+// knows — the loaded model, its capabilities, the Stable Audio LoRA list — asks
+// ASS, which reads it over HTTP and forwards the bytes. The lease is dropped as
+// soon as the read returns; nothing here pins the backend beyond the call.
+func (e *Engine) BackendInfo(ctx context.Context, service string) ([]byte, error) {
+	if _, ok := e.cfg.Services[service]; !ok {
+		return nil, fmt.Errorf("unknown service %q", service)
+	}
+	release, err := e.arb.Acquire(ctx, service)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring %s: %w", service, err)
+	}
+	defer release()
+	return backend.New(e.arb.BaseURL(service)).InfoRaw(ctx)
+}
+
 // recordVRAM reads the backend's self-reported GPU memory and stores it. Purely
 // telemetry — every failure path just logs, because the job already succeeded and
 // a missing sample is not worth failing it over. A backend on a GPU-less box

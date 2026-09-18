@@ -130,6 +130,27 @@ func (c *Client) Info(ctx context.Context) (Info, error) {
 	return i, nil
 }
 
+// InfoRaw fetches the backend's /v1/info and returns the response body verbatim.
+// Unlike Info (which decodes only the vram block ASS cares about), this hands the
+// whole document back so ASS can forward it to a client that wants the parts ASS
+// itself ignores — the model name, capabilities, the Stable Audio LoRA list. See
+// the /v1/backends/{service}/info passthrough.
+func (c *Client) InfoRaw(ctx context.Context) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/v1/info", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("backend info: %s", statusLine(resp))
+	}
+	return io.ReadAll(resp.Body)
+}
+
 // Download opens one artifact's bytes. The caller must Close the returned reader.
 func (c *Client) Download(ctx context.Context, jobID, name string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
