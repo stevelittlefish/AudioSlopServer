@@ -130,6 +130,26 @@ from demucs's 400, note that per-backend budgeting will eventually need per-serv
 tax values (today `gpu.context_tax_mb` is one global number — see the deferred
 VRAM-budget item in TODO.md).
 
+## Automated sampling (min/max in one shot)
+
+Reading `nvidia-smi` by hand catches the resident floor but almost never the
+inference peak — the peak lives for a few seconds mid-job. `scripts/measure-vram.sh`
+samples one process at ~5Hz in the background and remembers the extremes, so you
+get both:
+
+```sh
+# On the GPU host (or wrap the whole thing in ssh):
+scripts/measure-vram.sh acestep            # match the backend by process-name substring
+scripts/measure-vram.sh --port 2766 acestep # …and auto-park at the end for the context tax
+scripts/measure-vram.sh --pid 12345        # or pin an exact pid
+```
+
+Start it, run one or more jobs against the service (test page or curl), then
+Ctrl-C. It prints **min** (resident/parked floor, ignoring the pre-load zeros of
+a lazy loader) and **max** (the inference peak the VRAM budget must fit); with
+`--port` it then POSTs `/park` and reports the parked floor and the weights
+freed. Record the row above.
+
 ## Method (so numbers stay comparable)
 
 `nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits` (MiB), sampled
