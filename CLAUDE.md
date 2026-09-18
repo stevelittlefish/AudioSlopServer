@@ -415,6 +415,9 @@ We run bare metal for dev/testing (easier) and dockerise for deployment.
 - Requests for a **different** backend queue behind the arbiter, which performs
   the swap, then releases them. One swap in flight at a time — the GPU is the
   lock.
+- The full story (leases, the planning loop, a worked ACE-Step-vs-YuE
+  timeline, and the known starvation/ordering gaps) is in
+  [docs/scheduling.md](docs/scheduling.md). Read it before touching the arbiter.
 
 ### Build order
 

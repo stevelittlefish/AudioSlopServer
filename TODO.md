@@ -467,6 +467,15 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
 
 ### Backends & orchestration
 
+- [ ] **Arbiter fairness: a busy backend can starve a waiter forever.** The
+      pinned fast path hands out leases without checking whether another
+      service is waiting to evict, so a steady stream of ACE-Step jobs keeps
+      YuE in `queued` until its 30-minute job timeout fails it. Fix sketch (a
+      per-backend `draining` flag, or FIFO tickets) and the related no-FIFO and
+      swap-rollback gaps are written up in
+      [docs/scheduling.md](docs/scheduling.md) under "Known gaps". Decide before
+      the server has more than one user.
+
 - [x] **Repoint SlopBC at ASS for ACE-Step** — DONE (2026-09-18), and Stable
       Audio with it (Demucs was already through ASS). SlopBC's `internal/engine`
       now speaks ASS's unified envelope (`POST /v1/acestep/jobs` +
