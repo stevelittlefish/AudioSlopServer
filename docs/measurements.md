@@ -43,8 +43,32 @@ call, not done here.
 
 | Host | GPU | VRAM | System RAM | Notes |
 |---|---|---|---|---|
-| `ai.lemon.com` | **4× RTX 3090** (24GB each) | 24GB/card | 128GB | **The test & deployment target**, where ASS runs. ASS uses **GPU 0** (`device = 0`). **The card is NOT single-tenant:** GPU 0 also carries **wyoming-whisper** (~2.1GB, a Home Assistant faster-whisper backend — external, not ASS-managed, holds VRAM permanently), and GPUs 2–3 run vLLM (~21GB each). So on GPU 0 the usable VRAM budget is 24GB **minus** wyoming-whisper's ~2.1GB minus driver overhead — see the budgeting note below. |
+| `ai.lemon.com` | **4× RTX 3090** (24GB each) | 24GB/card | 128GB | **The test & deployment target**, where ASS runs. ASS uses **GPU 0** (`device = 0`). **The card is NOT single-tenant:** GPU 0 also carries **wyoming-whisper** (~2.1GB, a Home Assistant faster-whisper backend — external, not ASS-managed, holds VRAM permanently); **GPU 1 is ComfyUI's and must be left empty** (it wants the whole card on demand — do NOT move ASS there despite it looking free); GPUs 2–3 run vLLM (~21GB each). So on GPU 0 the usable VRAM budget is 24GB **minus** wyoming-whisper's ~2.1GB minus driver overhead — see the GPU-occupancy snapshot below. |
 | `ai2.lemon.com` | RTX 4080 (eGPU) | 16GB | **16GB** | *Not* our test box — just where the demucs numbers below happened to get measured. A **mini PC with an eGPU over OCuLink**: laptop-class host (16GB soldered) + desktop-class card. The canonical "peasant with a fancy hat": memory-constrained, compute-rich. Here **system RAM binds before VRAM**, so favour `evict = "stop"` + `idle_ttl` reclaim over parking — reloads are cheap on this card *anyway*. OCuLink is PCIe 4.0 x4 (~8 GB/s): a real PCIe link, ~2× Thunderbolt, but ~4× less than a directly-attached x16 slot — so the park↔unpark CPU↔VRAM copy is somewhat slower than on a desktop, though far from the Thunderbolt penalty. The ~2–5s park-restore assumption is a little optimistic here, not wildly. |
+
+### GPU occupancy on `ai.lemon.com` (measured 2026-09-18, ASS not running)
+
+`nvidia-smi` with none of ASS's backends up, so this is the *external* load ASS
+must budget around. The four cards are **not** interchangeable:
+
+| GPU | Used (idle) | Who | ASS may use it? |
+|---|---|---|---|
+| **0** | 2110 MiB | **wyoming-whisper**, ~2100 MiB, permanent (PID `/app/bin/python3`) | **Yes — this is ASS's card** (`device = 0`) |
+| 1 | 266 MiB | **ComfyUI** — loads/unloads on demand and **must have the card clear when it fires** | **No. Leave it empty.** |
+| 2 | 21346 MiB | vLLM worker TP0 | No |
+| 3 | 22793 MiB | vLLM workers TP1 (21336) + a 1442 MiB python | No |
+
+**GPU 1 looks nearly free (266 MiB) and it is a trap.** It's ComfyUI's card;
+ComfyUI expects the whole card available when a workflow runs, so ASS must never
+land there — put ASS on GPU 1 and the next big ComfyUI job OOMs. `device = 0` is
+deliberate, not just "the first card".
+
+**Budget confirmed from this snapshot.** GPU 0 idles at 2110 MiB (the ~2100 MiB
+whisper process + ~10 MiB driver — the 3090 has almost none of the ~0.39GB the
+4080 shows below). So usable ≈ 24576 − 2100 − 10 ≈ **22466 MiB**, and
+`vram_budget_mb = 21500` sits ~966 MiB under that — the right amount of headroom,
+because faster-whisper grows with concurrent transcriptions and torch reserves
+above what it allocates. **21500 stands, now measured rather than assumed.**
 
 ### The VRAM baseline (~0.39GB with everything off)
 
