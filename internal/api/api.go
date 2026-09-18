@@ -201,6 +201,11 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		Residency string `json:"residency"` // pinned | parked | stopped
 		Leases    int    `json:"leases"`    // in-flight jobs holding this backend
 		LastUsed  string `json:"last_used,omitempty"`
+		// VRAMMB: what this backend costs the card RIGHT NOW per its config —
+		// vram_pinned_mb while pinned, the vram_parked_mb context tax while
+		// parked, 0 while stopped. Summed across backends it's the arbiter's
+		// own idea of "used", which is what it budgets against.
+		VRAMMB int `json:"vram_mb"`
 		// Phase / PhaseSince: what's happening to this backend mid-swap, so the
 		// admin console can show "cold-starting… 0:42" instead of a dead button.
 		Phase      string `json:"phase,omitempty"`
@@ -216,6 +221,7 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		if s, ok := snap[name]; ok {
 			bv.Residency, bv.Leases, bv.LastUsed = s.Residency, s.Leases, s.LastUsed
 			bv.Phase, bv.PhaseSince = s.Phase, s.PhaseSince
+			bv.VRAMMB = s.VRAMMB
 		}
 		out = append(out, bv)
 	}

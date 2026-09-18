@@ -155,6 +155,49 @@
 
   .vram-wrap { background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
   .vram-scroll { overflow-x:auto; }
+
+  /* The meter: the arbiter's own view of the card. One stacked bar, because the
+     question an operator actually asks is "is there room for X?", and the
+     answer is pinned + parked vs budget — nvidia-smi's opinion is unavailable
+     (ASS holds no CUDA context) and would disagree anyway. */
+  .meter {
+    display:flex; align-items:center; gap:28px; padding:20px 22px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(90deg,rgba(94,224,176,.045),transparent 60%);
+    flex-wrap:wrap;
+  }
+  .meter-big { display:flex; flex-direction:column; min-width:150px; }
+  .meter-big .pct {
+    font-family:var(--mono); font-weight:700; font-size:40px; line-height:1;
+    letter-spacing:-.03em; color:var(--accent); text-shadow:0 0 18px rgba(94,224,176,.3);
+    font-variant-numeric:tabular-nums;
+  }
+  .meter-big .lbl { font-size:11.5px; color:var(--ink-faint); margin-top:6px; letter-spacing:.02em; }
+  .meter.hot .meter-big .pct { color:var(--parked); text-shadow:0 0 18px rgba(242,193,78,.3); }
+  .meter.over .meter-big .pct { color:var(--danger); text-shadow:0 0 18px rgba(255,107,107,.35); }
+  .meter-body { flex:1; min-width:260px; display:flex; flex-direction:column; gap:9px; }
+  .meter-nums { display:flex; gap:8px; align-items:baseline; font-family:var(--mono); font-size:12px; color:var(--ink-dim); }
+  .meter-nums b { color:var(--ink); font-weight:600; }
+  .meter-nums .dim { color:var(--ink-faint); }
+  .meter-nums .dim b { color:var(--ink-dim); }
+  .stack {
+    display:flex; height:14px; border-radius:999px; overflow:hidden;
+    background:var(--panel2); border:1px solid var(--line2);
+  }
+  .stack .seg { display:block; height:100%; width:0; transition:width .4s ease; }
+  .stack .seg.pinned { background:var(--pinned); box-shadow:0 0 10px rgba(94,224,176,.45); }
+  .stack .seg.parked {
+    background:repeating-linear-gradient(135deg,var(--parked) 0 4px,#b48d2f 4px 8px);
+  }
+  .meter.over .stack { border-color:var(--danger); }
+  .legend { display:flex; gap:20px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-dim); }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .legend b { color:var(--ink); font-family:var(--mono); font-weight:600; }
+  .legend em { font-style:normal; color:var(--ink-faint); }
+  .legend .sw { width:10px; height:10px; border-radius:3px; display:inline-block; }
+  .legend .sw.pinned { background:var(--pinned); }
+  .legend .sw.parked { background:repeating-linear-gradient(135deg,var(--parked) 0 3px,#b48d2f 3px 6px); }
+  .legend .sw.free { background:var(--panel2); border:1px solid var(--line2); }
   table.vram { width:100%; border-collapse:collapse; font-size:13px; min-width:640px; }
   table.vram th { text-align:left; font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); font-weight:600; padding:12px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
   table.vram td { padding:12px 16px; border-bottom:1px solid var(--line); color:var(--ink-dim); vertical-align:middle; }
@@ -209,6 +252,30 @@
     <span class="pill">measured from real jobs · peak = torch high-water mark</span>
   </div>
   <div class="vram-wrap">
+    <div class="meter" id="meter">
+      <div class="meter-big">
+        <span class="pct" id="meter-pct">—</span>
+        <span class="lbl">of budget committed</span>
+      </div>
+      <div class="meter-body">
+        <div class="meter-nums">
+          <span><b id="meter-used">—</b> used</span>
+          <span class="dim">/</span>
+          <span><b id="meter-budget">—</b> MB budget</span>
+          <span class="spacer"></span>
+          <span class="dim"><b id="meter-free">—</b> MB free</span>
+        </div>
+        <div class="stack" title="What the arbiter counts against gpu.vram_budget_mb">
+          <span class="seg pinned" id="seg-pinned"></span>
+          <span class="seg parked" id="seg-parked"></span>
+        </div>
+        <div class="legend">
+          <span><i class="sw pinned"></i>pinned <b id="leg-pinned">0</b> MB <em>models on the card</em></span>
+          <span><i class="sw parked"></i>parked <b id="leg-parked">0</b> MB <em>context tax, weights in RAM</em></span>
+          <span><i class="sw free"></i>free <b id="leg-free">0</b> MB</span>
+        </div>
+      </div>
+    </div>
     <div class="vram-scroll">
       <table class="vram">
         <thead><tr>
@@ -381,22 +448,56 @@ async function refresh() {
     const busy = inFlight || list.some(b => b.phase);
     if (busy) document.querySelectorAll(".actions button").forEach(x => x.disabled = true);
     $("#live").textContent = "live · " + new Date().toLocaleTimeString();
-    refreshVRAM(); // fire-and-forget; VRAM telemetry updates alongside the backends
+    refreshVRAM(list); // fire-and-forget; VRAM telemetry updates alongside the backends
   } catch (e) {
     $("#live").textContent = "offline";
     toast("Can't reach ASS: " + e.message, true);
   }
 }
 
-async function refreshVRAM() {
+// What the arbiter thinks the card is holding right now: every pinned
+// backend's budgeted cost plus every parked one's context tax. This is the
+// number it compares against gpu.vram_budget_mb when planning a swap, so it's
+// the honest "used" for the header — not what nvidia-smi would say, which ASS
+// can't read anyway (no CUDA context, by design).
+function vramCommitted(list) {
+  const t = { pinned:0, parked:0 };
+  (list || []).forEach(b => {
+    if (b.residency === "pinned") t.pinned += b.vram_mb || 0;
+    else if (b.residency === "parked") t.parked += b.vram_mb || 0;
+  });
+  return t;
+}
+
+async function refreshVRAM(list) {
   try {
     const r = await fetch("/v1/vram", { headers:{accept:"application/json"} });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const data = await r.json();
     const budget = data.vram_budget_mb || 0;
+    const t = vramCommitted(list);
+    const used = t.pinned + t.parked;
+    const mb = n => n.toLocaleString();
     $("#vrambudget").innerHTML = budget
-      ? `card budget <b>${budget.toLocaleString()} MB</b>`
+      ? `card budget <b>${mb(budget)} MB</b>`
       : `no VRAM budget set`;
+
+    // Meter. Without a budget there's no denominator, so the bar just shows the
+    // committed split at full width and the big number goes quiet.
+    const m = $("#meter");
+    const pct = budget ? Math.round(used / budget * 100) : 0;
+    const denom = budget || Math.max(used, 1);
+    $("#meter-pct").textContent = budget ? pct + "%" : "—";
+    $("#meter-used").textContent = mb(used);
+    $("#meter-budget").textContent = budget ? mb(budget) : "∞";
+    $("#meter-free").textContent = budget ? mb(Math.max(budget - used, 0)) : "—";
+    $("#seg-pinned").style.width = Math.min(t.pinned / denom * 100, 100) + "%";
+    $("#seg-parked").style.width = Math.min(t.parked / denom * 100, 100 - Math.min(t.pinned / denom * 100, 100)) + "%";
+    $("#leg-pinned").textContent = mb(t.pinned);
+    $("#leg-parked").textContent = mb(t.parked);
+    $("#leg-free").textContent = budget ? mb(Math.max(budget - used, 0)) : "—";
+    m.classList.toggle("hot", budget > 0 && pct >= 85 && pct <= 100);
+    m.classList.toggle("over", budget > 0 && pct > 100);
 
     const rows = (data.services || []).sort((a,b) => b.max_peak_mb - a.max_peak_mb);
     const body = $("#vrambody");
