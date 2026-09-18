@@ -15,6 +15,68 @@ import (
 // absent rather than failing, so a fresh checkout without the image stays green.
 const mockImage = "ass-mockbackend:local"
 
+// TestCleanSlate_ReapsOwnedContainers brings a mock backend up (so there's a real
+// ass.service-labeled container), then asserts CleanSlate finds and removes it and
+// leaves nothing labeled behind — the "boot from an empty card" guarantee.
+func TestCleanSlate_ReapsOwnedContainers(t *testing.T) {
+	if _, err := os.Stat(docker.DefaultSocket); err != nil {
+		t.Skipf("no docker socket; skipping")
+	}
+	d, err := docker.New(docker.DefaultSocket)
+	if err != nil {
+		t.Skipf("cannot reach docker: %v", err)
+	}
+	ctx := context.Background()
+	if ok, err := d.ImageExists(ctx, mockImage); err != nil || !ok {
+		t.Skipf("image %s not present (run scripts/build-mockbackend.sh); skipping", mockImage)
+	}
+
+	cfg := &config.Config{
+		GPU: config.GPU{Enabled: false},
+		Services: map[string]config.Service{
+			"mock": {Image: mockImage, Port: 18098, Verb: "separate",
+				Env: map[string]string{"JOB_MS": "200"}, Evict: config.EvictStop},
+		},
+	}
+	sup := New(d, cfg)
+	name := cfg.Services["mock"].ContainerName("mock")
+	defer func() { _ = d.Remove(context.Background(), name, true) }()
+
+	upCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := sup.EnsureUp(upCtx, "mock"); err != nil {
+		t.Fatalf("EnsureUp: %v", err)
+	}
+
+	// The mock is up and labeled. CleanSlate should reap at least it.
+	n, err := sup.CleanSlate(ctx)
+	if err != nil {
+		t.Fatalf("CleanSlate: %v", err)
+	}
+	if n < 1 {
+		t.Fatalf("CleanSlate reaped %d, want >= 1", n)
+	}
+
+	// Nothing ASS-owned should remain, and our container specifically is gone.
+	remaining, err := d.List(ctx, serviceLabel)
+	if err != nil {
+		t.Fatalf("List after CleanSlate: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("after CleanSlate, %d ass.service container(s) remain, want 0", len(remaining))
+	}
+	if st, err := d.Inspect(ctx, name); err != nil {
+		t.Fatalf("Inspect after CleanSlate: %v", err)
+	} else if st.Exists {
+		t.Fatalf("after CleanSlate, %s still exists", name)
+	}
+
+	// And on an already-clean card it's a harmless no-op returning zero.
+	if n, err := sup.CleanSlate(ctx); err != nil || n != 0 {
+		t.Fatalf("CleanSlate on empty card: got (%d, %v), want (0, nil)", n, err)
+	}
+}
+
 // TestEnsureUp_BringsMockBackendHealthy runs the real supervisor against the
 // real daemon: create the mock backend container, start it, and wait for its
 // /health — no GPU involved, which is the whole point.

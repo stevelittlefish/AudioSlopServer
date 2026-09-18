@@ -57,6 +57,47 @@ func (c *Client) Inspect(ctx context.Context, name string) (State, error) {
 	}, nil
 }
 
+// Container is one row of a container listing — enough to recognize ASS's own
+// backends and reap them, nothing more.
+type Container struct {
+	ID     string
+	Names  []string          // Docker returns these with a leading "/"
+	Image  string
+	State  string            // "running", "exited", "created", ...
+	Labels map[string]string
+}
+
+// List returns all containers (running or not) carrying the given label key,
+// whatever its value. ASS stamps every backend it creates with "ass.service",
+// so List(ctx, "ass.service") enumerates exactly the containers ASS owns — the
+// basis for reaping ghosts left over from a previous run.
+func (c *Client) List(ctx context.Context, labelKey string) ([]Container, error) {
+	// The Engine's filter param is a URL-encoded JSON object. "label":["key"]
+	// with no "=value" matches on presence of the key alone.
+	filters, err := json.Marshal(map[string][]string{"label": {labelKey}})
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{"all": {"true"}, "filters": {string(filters)}}
+
+	var raw []struct {
+		ID     string            `json:"Id"`
+		Names  []string          `json:"Names"`
+		Image  string            `json:"Image"`
+		State  string            `json:"State"`
+		Labels map[string]string `json:"Labels"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/containers/json?"+q.Encode(), nil, &raw); err != nil {
+		return nil, fmt.Errorf("listing containers by label %q: %w", labelKey, err)
+	}
+
+	out := make([]Container, len(raw))
+	for i, r := range raw {
+		out[i] = Container{ID: r.ID, Names: r.Names, Image: r.Image, State: r.State, Labels: r.Labels}
+	}
+	return out, nil
+}
+
 // Create creates (but does not start) a container from the spec. Returns the
 // new container's ID.
 func (c *Client) Create(ctx context.Context, spec RunSpec) (string, error) {

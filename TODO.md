@@ -70,6 +70,16 @@ instead of buffering. Both noted for later.
 turns, cheap park-swap and full stop-swap both working, jobs protected mid-flight
 by leases. `/v1/backends` now reports live residency + lease counts.
 
+- [x] **Clean slate on startup** (`Supervisor.CleanSlate`, called in `cmd/ass/main.go`):
+      reap every `ass.service`-labeled container on boot so the arbiter's fresh,
+      empty, in-memory residency map is actually true. Without it, backends left
+      running from a previous ASS process are ghosts — invisible to the new arbiter,
+      still holding VRAM, never evicted, one swap from an OOM. Also incidentally
+      fixes stale images (a reaped container can't ignore a freshly pulled `:latest`).
+      Chose blunt-reap over adopt-and-reconcile (YAGNI: restarts are rare, starts
+      lazy, jobs async — a cold reload on restart is a fair price for no ghosts).
+      `docker.List(label)` added as the one new primitive; tested against the mock.
+
 Not yet done in slice 2 (deferred — needs data we don't have):
 - [ ] VRAM/RAM budgeting: count pinned model + per-parked context tax against the
       budget. Needs real per-service weight sizes (see "Real weight-size

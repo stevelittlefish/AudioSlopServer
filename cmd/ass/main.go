@@ -4,10 +4,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/stevelittlefish/AudioSlopServer/internal/api"
 	"github.com/stevelittlefish/AudioSlopServer/internal/arbiter"
@@ -57,6 +59,20 @@ func main() {
 	log.Printf("talking to docker (API %s)", dcli.APIVersion())
 
 	sup := supervisor.New(dcli, cfg)
+
+	// Boot from a known-empty card. Any backend still running from a previous ASS
+	// process is a ghost the fresh (in-memory, empty) arbiter can't see — it holds
+	// VRAM the arbiter thinks is free, so the next swap OOMs. Reap them all now so
+	// the empty residency map is actually true. Non-fatal: if we can't tidy up,
+	// log it and press on rather than refusing to boot.
+	reapCtx, reapCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	if n, err := sup.CleanSlate(reapCtx); err != nil {
+		log.Printf("warning: clean slate failed (%v) — leftover backends may still hold VRAM", err)
+	} else if n > 0 {
+		log.Printf("reaped %d leftover backend container(s) on startup", n)
+	}
+	reapCancel()
+
 	arb := arbiter.New(sup, cfg)
 	eng := engine.New(cfg, arb, st, res)
 	handler := api.New(cfg, eng, st, arb).Handler()

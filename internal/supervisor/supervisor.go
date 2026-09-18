@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
@@ -108,7 +109,7 @@ func (s *Supervisor) create(ctx context.Context, service string, svc config.Serv
 		Env:       envSlice(svc, service),
 		Volumes:   svc.Volumes,
 		ShmSizeMB: svc.ShmSizeMB,
-		Labels:    map[string]string{"ass.service": service},
+		Labels:    map[string]string{serviceLabel: service},
 	}
 	// The whole reason ASS exists: hand the one GPU to whoever's resident — but
 	// only when there is one. On this dev box GPU.Enabled is false, so no request
@@ -124,6 +125,57 @@ func (s *Supervisor) create(ctx context.Context, service string, svc config.Serv
 	}
 	return nil
 }
+
+// serviceLabel is stamped on every container ASS creates (see create()), so ASS
+// can find its own children again — notably to reap them on startup.
+const serviceLabel = "ass.service"
+
+// CleanSlate removes every container ASS owns (anything carrying the ass.service
+// label), running or not, and returns how many it reaped. It's the deliberately
+// blunt answer to a subtle problem: after an ASS restart the arbiter's residency
+// map is empty and in-memory, so any backend still running from the *previous*
+// process is a ghost — invisible to the arbiter, still holding VRAM, never
+// evicted, a swap away from an OOM. Rather than teach ASS to adopt and re-account
+// for those ghosts, we shoot them: boot from a known-empty card so the empty map
+// is actually true. Also incidentally fixes stale images — a freshly pulled
+// :latest can't be ignored by a container that no longer exists.
+//
+// Cost: whatever was warm cold-starts again on next request. Restarts are rare,
+// starts are lazy, jobs are async — a fair price for provably no ghosts.
+func (s *Supervisor) CleanSlate(ctx context.Context) (int, error) {
+	owned, err := s.docker.List(ctx, serviceLabel)
+	if err != nil {
+		return 0, fmt.Errorf("listing ASS containers to reap: %w", err)
+	}
+	if len(owned) == 0 {
+		log.Printf("[supervisor] clean slate: no leftover backends to reap — a tidy card")
+		return 0, nil
+	}
+	reaped := 0
+	for _, ct := range owned {
+		name := containerName(ct)
+		log.Printf("[supervisor] clean slate: reaping %s (%s, %s)", name, shortID(ct.ID), ct.State)
+		// Remove by ID — robust even if the name is weird. force also kills a
+		// still-running one, which is exactly the ghost we're here for.
+		if err := s.docker.Remove(ctx, ct.ID, true); err != nil {
+			return reaped, fmt.Errorf("reaping %s: %w", name, err)
+		}
+		reaped++
+	}
+	log.Printf("[supervisor] clean slate: reaped %d leftover backend(s); the GPU is ours again", reaped)
+	return reaped, nil
+}
+
+// containerName picks a human name out of a listing row (Docker gives names a
+// leading slash), falling back to the short id when there's none.
+func containerName(ct docker.Container) string {
+	if len(ct.Names) > 0 {
+		return strings.TrimPrefix(ct.Names[0], "/")
+	}
+	return shortID(ct.ID)
+}
+
+func shortID(id string) string { return id[:min(12, len(id))] }
 
 // Stop stops a backend's container without removing it. Used when demoting a
 // backend to the `stopped` state (freeing its RAM).
