@@ -52,6 +52,7 @@
         <div class="field"><label>Steps</label><input type="number" data-p="inference_steps" min="1" placeholder="8 (turbo)"></div>
         <div class="field"><label>Guidance scale</label><input type="number" data-p="guidance_scale" step="0.5" placeholder="7.0"></div>
         <div class="field"><label>Seed (−1 = random)</label><input type="number" data-p="seed" placeholder="-1"></div>
+        <div class="field"><label>Batch (songs per run)</label><input type="number" data-p="batch_size" min="1" value="1"></div>
         <div class="field" style="display:flex;align-items:flex-end;">
           <label class="check"><input type="checkbox" data-p="thinking"> thinking (5Hz LM plans codes)</label></div>
       </div>
@@ -169,6 +170,11 @@ window.ASS_TEST = {
     const sd = numOpt(root,"seed");
     if (sd===undefined || sd===-1) { p.use_random_seed = true; p.seed = -1; }
     else { p.use_random_seed = false; p.seed = sd; }
+
+    // batch: ACE-Step defaults to 2 songs per run if you don't say otherwise, which
+    // surprises everyone. Pin it to 1 unless the user asks for a batch.
+    const bs = numOpt(root,"batch_size");
+    p.batch_size = (bs===undefined || bs < 1) ? 1 : bs;
 
     // --- advanced ---------------------------------------------------------
     const model = val(root,"model"); if (model) p.model = model;
