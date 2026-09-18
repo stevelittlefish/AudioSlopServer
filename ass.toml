@@ -149,10 +149,12 @@ port  = 5340            # YuE. ASS maps host:port -> container:port on the same
                         # YUE_API_PORT below is pinned to match.
 verb  = "generate"      # POST /v1/generate; returns audio.flac + score.abc + the
                         # lyrics + result/config metadata as a mixed-kind artifacts[]
-evict = "stop"          # START HERE. YuE2-3B is heavy; the parked context tax may
-                        # not pay off vs a cold reload. /park + /unpark ARE
-                        # implemented — flip to "park" once VRAM/RAM is measured on
-                        # the box (docs/measurements.md) and the numbers justify it.
+evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
+                        # re-init), so like ACE-Step it should earn the fast park/
+                        # unpark swap. /park + /unpark ARE implemented. Parked-VRAM
+                        # (context tax) and unpark latency are still UNMEASURED —
+                        # confirm on the box (docs/measurements.md) and drop back to
+                        # "stop" only if the numbers don't justify holding it in RAM.
 ram_reserve_mb = 10000  # rough parked-in-RAM guess for the 3B model; UNMEASURED —
                         # refine on the box before trusting it.
 idle_ttl = "0"          # never reclaim parked RAM on the big server
