@@ -101,6 +101,7 @@ type Service struct {
 	Verb         string            `toml:"verb"`      // job verb: separate, generate, transcribe...
 	Env          map[string]string `toml:"env"`       // extra env for the backend container
 	Volumes      []string          `toml:"volumes"`   // "host:container[:ro]" mounts (weight caches etc.)
+	Command      []string          `toml:"command"`   // override the image's default CMD (e.g. Stable Audio's --lora-ckpt-path)
 	ShmSizeMB    int               `toml:"shm_size_mb"`
 	Evict        EvictPolicy       `toml:"evict"` // park | stop
 	RAMReserveMB int               `toml:"ram_reserve_mb"`

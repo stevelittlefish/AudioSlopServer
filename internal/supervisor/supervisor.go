@@ -123,6 +123,7 @@ func (s *Supervisor) create(ctx context.Context, service string, svc config.Serv
 		Image:     svc.Image,
 		Port:      svc.Port,
 		Env:       envSlice(svc, service),
+		Cmd:       svc.Command,
 		Volumes:   svc.Volumes,
 		ShmSizeMB: svc.ShmSizeMB,
 		Labels:    map[string]string{serviceLabel: service},

@@ -94,7 +94,24 @@ shm_size_mb = 8192      # SA3 wants elbow room (its compose sets 8gb)
 # file. HF_HOME/TORCH_HOME land in this service's own /cache/stableaudio subdir. The
 # image's CMD already loads `--model medium`.
 env     = { HF_HOME = "/cache/stableaudio/huggingface", TORCH_HOME = "/cache/stableaudio/torch", HF_TOKEN_PATH = "/cache/hf-token" }
-volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs"]
+# The /loras mount is only needed if you load a finetune LoRA (see `command`
+# below); harmless to leave when you don't.
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs", "/srv/stable-audio-3/loras:/loras:ro"]
+
+# LoRAs. The image's default CMD loads the base `--model medium`. To load one or
+# more finetune LoRAs at startup — like the standalone service's compose did —
+# override the whole command with run_api.py's --lora-ckpt-path. `command`
+# REPLACES the image CMD, so `--model medium` is repeated here. Load ORDER sets
+# each LoRA's index in the /v1/generate `loras` array (first = index 0), which is
+# the order SlopBC reads back from /v1/backends/stableaudio/info. Stage the
+# .safetensors under the host /loras dir mounted above. Uncomment to enable:
+#
+# command = [
+#   "/app/.venv/bin/python", "/app/run_api.py",
+#   "--model", "medium",
+#   "--lora-ckpt-path", "/loras/limp-bizkit-4k.safetensors",   # index 0
+#   # "/loras/another-style.safetensors",                      # index 1
+# ]
 
 [services.acestep]
 # ACE-Step 1.5 XL — music generation (the big one: caption + lyrics -> a song).
