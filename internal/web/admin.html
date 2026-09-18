@@ -59,6 +59,8 @@
   .counts { display:flex; gap:8px; }
   .pill { font-family:var(--mono); font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--line2); color:var(--ink-dim); }
   .pill b { color:var(--ink); }
+  .pill.live { border-color:var(--accent-dim); color:var(--accent); }
+  .pill.live b { color:var(--accent); }
 
   button {
     font-family:var(--sans); font-size:13px; font-weight:500; cursor:pointer;
@@ -117,6 +119,26 @@
   }
   @keyframes spin { to { transform:rotate(360deg); } }
   .phase .elapsed { margin-left:auto; color:var(--ink-faint); }
+
+  /* Active: the backend is pinned AND has jobs in flight (leases > 0). The
+     GPU is actually earning its keep, as opposed to merely being warm. The
+     badge dot beats like a heart and a row says how many jobs it's serving,
+     so an operator can tell "hot but idle" from "hot and busy" at a glance —
+     and why the Park/Stop buttons are about to be refused. */
+  .card[data-active="1"] .badge .dot { animation:heartbeat 1.1s ease-in-out infinite; }
+  @keyframes heartbeat {
+    0%,100% { transform:scale(1); box-shadow:0 0 10px var(--state-c); }
+    50%     { transform:scale(1.35); box-shadow:0 0 18px var(--state-c), 0 0 4px #fff; }
+  }
+  .active {
+    display:none; align-items:center; gap:8px; margin:-6px 0 14px;
+    font-family:var(--mono); font-size:11.5px; color:var(--pinned);
+  }
+  .card[data-active="1"] .active { display:flex; }
+  .active .led {
+    width:9px; height:9px; border-radius:50%; background:var(--pinned);
+    box-shadow:0 0 10px var(--pinned); animation:pulse 1.1s infinite;
+  }
 
   .meta { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-bottom:16px; font-size:12.5px; }
   .meta .k { color:var(--ink-faint); }
@@ -261,10 +283,15 @@ function card(b) {
   const canUnpark = b.residency === "parked";
   const canStop   = b.residency !== "stopped";
   const working = !!b.phase;
+  // Serving: pinned with jobs holding leases. A parked/stopped backend can't
+  // have real work on it, and mid-swap the blue "working" row already says
+  // what's going on, so the green light only shows for the honest case.
+  const active = !working && b.residency === "pinned" && b.leases > 0;
   const el = document.createElement("div");
   el.className = "card";
   el.dataset.res = b.residency;
   if (working) el.dataset.working = "1";
+  if (active) el.dataset.active = "1";
   el.innerHTML = `
     <div class="head">
       <span class="name"></span>
@@ -275,6 +302,9 @@ function card(b) {
     <div class="phase">
       <span class="spin"></span><span class="ptext"></span>
       <span class="elapsed" data-since=""></span>
+    </div>
+    <div class="active">
+      <span class="led"></span><span class="atext"></span>
     </div>
     <div class="meta">
       <span class="k">image</span><span class="v img"></span>
@@ -298,6 +328,10 @@ function card(b) {
     els.dataset.since = b.phase_since || "";
     els.textContent = elapsed(b.phase_since);
   }
+  if (active) {
+    el.querySelector(".atext").textContent =
+      `serving ${b.leases} job${b.leases === 1 ? "" : "s"}`;
+  }
   el.querySelector(".img").textContent = shortImage(b.image);
   el.querySelector(".img").title = b.image || "";
   const lv = el.querySelector(".leasev");
@@ -320,7 +354,11 @@ function card(b) {
 function renderCounts(list) {
   const c = { pinned:0, parked:0, stopped:0 };
   list.forEach(b => c[b.residency] = (c[b.residency]||0)+1);
+  // Jobs in flight across the whole card: the sum of every pinned backend's
+  // leases. Zero means the GPU is warm-but-idle, which is the boring normal.
+  const jobs = list.reduce((n,b) => n + (b.residency === "pinned" ? (b.leases||0) : 0), 0);
   $("#counts").innerHTML =
+    `<span class="pill${jobs ? " live" : ""}">serving <b>${jobs}</b></span>` +
     `<span class="pill">pinned <b>${c.pinned}</b></span>` +
     `<span class="pill">parked <b>${c.parked}</b></span>` +
     `<span class="pill">stopped <b>${c.stopped}</b></span>`;
