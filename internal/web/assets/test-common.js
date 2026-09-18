@@ -169,6 +169,131 @@ async function poll(jobID){
   $("#submit").disabled = false;
 }
 
+// --- waveform player -------------------------------------------------------
+// A self-contained transport: its own <audio>, a play/pause button, a
+// click-to-seek waveform and a time readout. Peaks are decoded from the audio
+// in the browser (we have no precomputed peaks here), so the bars are the real
+// signal, not decoration. The look is deliberately not the SlopBC library look
+// — mirrored rounded bars, a top-to-bottom accent gradient and a soft glow on
+// the played portion — because "futuristic" was the ask and grey square blocks
+// were not it.
+let _actx = null;
+const audioCtx = () => (_actx ||= new (window.AudioContext || window.webkitAudioContext)());
+const _players = new Set(); // every player's <audio>, so one can hush the rest
+
+// decodePeaks fetches + decodes an audio URL into a Float32 of 0..1 peak
+// magnitudes, `buckets` of them. One channel is enough for a picture.
+async function decodePeaks(url, buckets){
+  const buf = await (await fetch(url)).arrayBuffer();
+  const decoded = await audioCtx().decodeAudioData(buf);
+  const ch = decoded.getChannelData(0), n = ch.length;
+  const count = Math.max(1, Math.min(buckets, n)), per = n / count;
+  const peak = new Float32Array(count);
+  for (let i = 0; i < count; i++){
+    const from = Math.floor(i*per), to = Math.min(n, Math.floor((i+1)*per));
+    let mx = 0;
+    for (let j = from; j < to; j++){ const a = ch[j] < 0 ? -ch[j] : ch[j]; if (a > mx) mx = a; }
+    peak[i] = mx;
+  }
+  return { peak, duration: decoded.duration };
+}
+
+const mmss = s => { s = Math.max(0, Math.floor(s||0)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function waveformPlayer(url){
+  const wrap = document.createElement("div");
+  wrap.className = "wform";
+  wrap.innerHTML = `
+    <button class="wform-play" type="button" aria-label="Play">▶</button>
+    <div class="wform-canvas"><canvas></canvas></div>
+    <span class="wform-time">0:00 / 0:00</span>`;
+  const audio = new Audio();
+  audio.preload = "none";
+  audio.src = url;
+  _players.add(audio);
+  const playBtn = wrap.querySelector(".wform-play");
+  const canvasWrap = wrap.querySelector(".wform-canvas");
+  const canvas = wrap.querySelector("canvas");
+  const timeEl = wrap.querySelector(".wform-time");
+
+  let peaks = null, progress = 0, hover = -1, dur = 0;
+  const accent = css("--accent") || "#5ee0b0";
+
+  function draw(){
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height, dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, w, h);
+    if (!peaks) return;
+    const mid = h/2, gap = 1*dpr, bw = 3*dpr, step = bw + gap;
+    const cols = Math.max(1, Math.floor(w/step));
+    const per = peaks.length/cols;
+    const played = progress * cols, hovCol = hover < 0 ? -1 : hover * cols;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, accent); grad.addColorStop(1, "#2b8f6f");
+    for (let i = 0; i < cols; i++){
+      let mx = 0; const from = Math.floor(i*per), to = Math.max(from+1, Math.floor((i+1)*per));
+      for (let j = from; j < to && j < peaks.length; j++) if (peaks[j] > mx) mx = peaks[j];
+      const bh = Math.max(2*dpr, Math.pow(mx, 0.7) * (mid - 2*dpr));
+      const x = i*step, isPlayed = i < played, isHover = hovCol >= 0 && i < hovCol;
+      ctx.globalAlpha = isPlayed ? 1 : (isHover ? 0.5 : 0.28);
+      ctx.fillStyle = grad;
+      if (isPlayed){ ctx.shadowColor = accent; ctx.shadowBlur = 6*dpr; } else { ctx.shadowBlur = 0; }
+      const r = Math.min(bw/2, bh);
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, mid-bh, bw, bh*2, r); else ctx.rect(x, mid-bh, bw, bh*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    // Playhead line.
+    if (progress > 0){
+      ctx.fillStyle = "#eafff6"; ctx.fillRect(Math.min(w-dpr, progress*w), 0, dpr, h);
+    }
+  }
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor((canvasWrap.clientWidth||600) * dpr);
+    canvas.height = Math.floor(56 * dpr);
+    canvas.style.height = "56px";
+    draw();
+  }
+  function showTime(){ timeEl.textContent = `${mmss(audio.currentTime)} / ${mmss(dur || audio.duration)}`; }
+
+  playBtn.addEventListener("click", () => {
+    if (audio.paused){
+      // Don't talk over the other players on the page.
+      for (const p of _players) if (p !== audio) p.pause();
+      audio.play().catch(()=>{});
+    } else audio.pause();
+  });
+
+  audio.addEventListener("play",  () => { playBtn.textContent = "❚❚"; playBtn.setAttribute("aria-label","Pause"); });
+  audio.addEventListener("pause", () => { playBtn.textContent = "▶";  playBtn.setAttribute("aria-label","Play"); });
+  audio.addEventListener("ended", () => { progress = 0; draw(); });
+  audio.addEventListener("timeupdate", () => {
+    const d = dur || audio.duration;
+    if (d > 0) progress = audio.currentTime / d;
+    showTime(); draw();
+  });
+
+  const seekRatio = e => {
+    const rect = canvas.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - rect.left)/rect.width));
+  };
+  canvas.addEventListener("click", e => {
+    const d = dur || audio.duration; if (!(d > 0)) return;
+    audio.currentTime = seekRatio(e) * d; progress = seekRatio(e); draw();
+  });
+  canvas.addEventListener("mousemove", e => { hover = seekRatio(e); draw(); });
+  canvas.addEventListener("mouseleave", () => { hover = -1; draw(); });
+
+  new ResizeObserver(resize).observe(canvasWrap);
+  decodePeaks(url, 900).then(p => { peaks = p.peak; dur = p.duration; showTime(); resize(); }).catch(()=>{ resize(); });
+  resize();
+  return wrap;
+}
+
 function renderArtifacts(jobID, arts){
   const box = $("#art");
   if (!arts.length) { box.innerHTML = '<div class="muted">Job produced no artifacts.</div>'; return; }
@@ -187,10 +312,12 @@ function renderArtifacts(jobID, arts){
         <span class="akind">${esc(a.kind || "file")}</span>
         <span class="asize">${fmtBytes(a.bytes)}</span>
       </div>
-      ${isAudio ? `<audio controls preload="none" src="${url}"></audio>` : ""}
       ${isImage ? `<img src="${url}" alt="${esc(a.name)}" style="max-width:100%;border-radius:8px;display:block;margin-bottom:8px;">` : ""}
       ${isText ? `<pre data-textsrc="${url}">loading…</pre>` : ""}
       <a class="dl" href="${url}" download="${esc(a.name)}">↓ download ${esc(ct)}</a>`;
+    // A neat, decode-in-browser waveform player instead of the stock <audio>
+    // chrome — same click-to-seek transport, just less like 1998.
+    if (isAudio) el.insertBefore(waveformPlayer(url), el.querySelector(".dl"));
     box.appendChild(el);
   });
   // Fill text previews (lyrics, audio_codes, metadata) inline — small, handy.
