@@ -49,7 +49,8 @@ image = "ghcr.io/stevelittlefish/stem-separator:latest"
 port  = 5336
 verb  = "separate"
 evict = "park"          # small enough to keep parked in RAM
-vram_pinned_mb = 2000   # MEASURED peak: ~1.6GB mid-separate on a 4080; 2000 w/ headroom.
+vram_pinned_mb = 1000   # MEASURED peak: 554 MiB via /v1/info telemetry on the 3090.
+                        # demucs is tiny; 1000 is generous headroom (was an over-budgeted 2000).
 vram_parked_mb = 400    # MEASURED: 354 MiB parked on a 3090 (see docs/measurements.md).
 ram_reserve_mb = 1000
 idle_ttl = "0"          # never reclaim parked RAM on the big server
@@ -80,8 +81,8 @@ verb  = "generate"      # POST /v1/generate; returns audio.wav (+ spectrogram)
 evict = "park"          # cold start reloads a multi-GB checkpoint + flash-attn,
                         # so the fast park/unpark swap earns its keep here. The
                         # peasant box (tight RAM) should switch this to "stop".
-vram_pinned_mb = 6000   # UNMEASURED estimate for the medium model's peak — measure
-                        # with scripts/measure-vram.sh and raise it here if you OOM.
+vram_pinned_mb = 6500   # MEASURED peak: 5388 MiB via /v1/info telemetry on the 3090.
+                        # Was at 90% of the old 6000 — nudged up for headroom.
 vram_parked_mb = 2000   # MEASURED: 1948 MiB parked on a 3090 — the HEAVIEST park tax
                         # of the four (flash-attn + larger workspaces). See measurements.md.
 ram_reserve_mb = 8000   # rough parked-in-RAM cost of the medium model; UNMEASURED
@@ -118,8 +119,9 @@ evict = "park"          # ACE-Step is the backend park pays off MOST for: its co
                         # park analysis in docs/measurements.md. Context tax is the
                         # one number still to confirm on the box (expected 0.5-2GB;
                         # fits GPU 0's ~21.5GB usable with room to spare).
-vram_pinned_mb = 10000  # DiT ~9GB on the card + inference headroom. Peak UNMEASURED
-                        # — measure with scripts/measure-vram.sh and raise on OOM.
+vram_pinned_mb = 15000  # MEASURED peak: 13850 MiB via /v1/info telemetry on the 3090 —
+                        # the old 10000 was 39% too LOW and would have overcommitted the
+                        # card. Set above the observed peak; watch it as more jobs land.
 vram_parked_mb = 700    # MEASURED: 616 MiB parked on a 3090 — SMALL, despite the XL
                         # DiT. OFFLOAD_TO_CPU already keeps most weights off the card, so
                         # park leaves little behind. (Predicted 0.5-2GB; landed low.)
@@ -174,8 +176,8 @@ evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
                         # (context tax) and unpark latency are still UNMEASURED —
                         # confirm on the box (docs/measurements.md) and drop back to
                         # "stop" only if the numbers don't justify holding it in RAM.
-vram_pinned_mb = 8000   # UNMEASURED estimate for the 3B model's peak — measure with
-                        # scripts/measure-vram.sh and raise it here if you OOM.
+vram_pinned_mb = 10500  # MEASURED peak: 9486 MiB via /v1/info telemetry on the 3090 —
+                        # the old 8000 was 19% too low. Set above the observed peak.
 vram_parked_mb = 1100   # MEASURED: 1042 MiB parked on a 3090. See docs/measurements.md.
 ram_reserve_mb = 10000  # rough parked-in-RAM guess for the 3B model; UNMEASURED —
                         # refine on the box before trusting it.

@@ -139,6 +139,34 @@ read ~0 for a parked process because there are no live tensors on the card. So t
 admin table gives you inference **peaks** (pinned), and per-process `nvidia-smi`
 stays the tool for **parked** taxes. Different memory layers, different tools.
 
+### Inference peaks (pinned) — from `/v1/info` telemetry (2026-09-18)
+
+The first real pinned peaks, read off the admin VRAM table (ASS records each
+backend's `peak_mb` = torch `max_memory_allocated` after every job). This is the
+number `vram_pinned_mb` must cover, and **two of the four guesses were dangerously
+low**:
+
+| backend | measured peak | old guess | new `vram_pinned_mb` | verdict |
+|---|---|---|---|---|
+| demucs | 554 MiB | 2000 | 1000 | over-budgeted; trimmed |
+| stable-audio | 5388 MiB | 6000 | 6500 | was at 90% — nudged up |
+| YuE | 9486 MiB | 8000 | 10500 | **19% too low** |
+| ACE-Step | 13850 MiB | 10000 | 15000 | **39% too low — would overcommit** |
+
+Left as guesses, ASS would have pinned ACE-Step believing it costs 10GB while it
+actually peaks at ~13.9GB — on a card already carrying whisper (2.1GB) and other
+parked backends, that's a real OOM. This is the entire point of the budget being
+a measured, per-service knob.
+
+**`reserved` lies after a job; `peak` doesn't.** In the telemetry YuE showed
+`reserved` 688 MiB but `peak` 9486 MiB — because ASS reads `/v1/info` *after* the
+job and YuE has offloaded its weights to CPU by then, so the live reservation is
+near-nothing while the high-water mark still records the real inference peak.
+Always budget on `peak_mb`, never the post-job `reserved`/`allocated`.
+
+Caveat: these are 1–3 samples each. Peaks grow with longer audio, more steps and
+bigger batches, so treat them as a floor and let the telemetry keep accumulating.
+
 ### Lazy VRAM load (nvtop-confirmed)
 
 demucs uses **zero VRAM until its first request** — the container starts, the
