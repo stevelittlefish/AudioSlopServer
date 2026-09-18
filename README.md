@@ -167,7 +167,28 @@ worked examples. The full option surface:
 | `idle_ttl` | duration | `0` | `0` = never reclaim parked RAM. Set e.g. `"10m"` on a constrained box to demote parked → stopped. |
 | `env` | table | `{}` | Extra environment for the container. **`PORT` and `VERB` are always injected**; add anything else here (e.g. a backend that reads `SEP_PORT` instead of `PORT`). |
 | `volumes` | list | `[]` | Bind mounts, Docker's `"host:container[:ro]"` syntax. Fully yours to change — see below. |
+| `command` | list | `[]` | Override the image's default CMD. **Replaces it entirely**, so repeat the defaults. This is how Stable Audio loads finetune LoRAs at startup — see below. |
 | `shm_size_mb` | int | daemon default | `/dev/shm` size; some models want more than Docker's 64MB default. |
+
+### Loading finetune LoRAs (Stable Audio)
+
+A LoRA lives in the **backend**, not ASS. Our Stable Audio fork loads one by
+overriding the container command with `run_api.py`'s `--lora-ckpt-path`, exactly
+as its standalone `compose.yaml` did. Stage the `.safetensors` under
+`/srv/ass/loras/<service>` (mounted read-only at `/loras`), then set `command`:
+
+```toml
+[services.stableaudio]
+volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/stableaudio:/app/outputs", "/srv/ass/loras/stableaudio:/loras:ro"]
+command = [
+  "/app/.venv/bin/python", "/app/run_api.py",
+  "--model", "medium",
+  "--lora-ckpt-path", "/loras/limp-bizkit-4k.safetensors",   # index 0
+]
+```
+
+Load **order** sets each LoRA's index in the `/v1/generate` `loras` array (first
+= index 0) — the same order a client reads back from `/v1/backends/stableaudio/info`.
 
 ### Changing bind mounts (weight caches, output dirs)
 

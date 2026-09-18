@@ -333,6 +333,10 @@ callers don't relearn per backend:
 - `GET  /v1/jobs/{id}/result/{name}` → download one named artifact, served from
   ASS's own store — available even after the backend has been evicted.
 - `GET  /v1/backends` → each backend's state, queue depth, last-used, VRAM/RAM.
+- `GET  /v1/backends/{service}/info` → read-only passthrough of a backend's own
+  `/v1/info` (model, capabilities, e.g. Stable Audio's LoRA list). ASS holds no
+  CUDA context, so this is how a client reads what only the backend knows; it
+  warms the backend to answer.
 
 ### Job store schema (sqlite)
 
@@ -368,6 +372,12 @@ image = "yue:local"
 port  = 5340
 verb  = "generate"
 evict = "stop"            # too heavy to keep parked; just unload it
+
+# Each service also takes `env`, `volumes` ("host:container[:ro]"), and `command`
+# (override the image CMD — REPLACES it, so repeat the defaults). `command` is how
+# Stable Audio loads finetune LoRAs at startup (--lora-ckpt-path), staged under
+# /srv/ass/loras/<service> and mounted at /loras. The order sets each LoRA's
+# index in the /v1/generate `loras` array.
 ```
 
 ### Deployment topology

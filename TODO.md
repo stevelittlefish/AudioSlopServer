@@ -467,14 +467,23 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
 
 ### Backends & orchestration
 
-- [ ] **Repoint SlopBC at ASS for ACE-Step** — REQUIRED, not optional. We ripped
-      ACE-Step's legacy `/release_task`+`/query_result` out, so SlopBC's
-      `internal/engine` (which talks that API directly) breaks against the new
-      image. Move SlopBC to submit via ASS's `POST /v1/{service}/jobs` +
-      `GET /v1/jobs/{id}` before deploying the conformed ACE-Step, or SlopFM goes
-      dark. Watch the rich flows SlopBC relies on: cover/repaint (multipart source
-      audio), and `audio_codes` reuse — all preserved on the backend, but the
-      client path changes.
+- [x] **Repoint SlopBC at ASS for ACE-Step** — DONE (2026-09-18), and Stable
+      Audio with it (Demucs was already through ASS). SlopBC's `internal/engine`
+      now speaks ASS's unified envelope (`POST /v1/acestep/jobs` +
+      `GET /v1/jobs/{id}`), reassembling ACE's rich per-take metadata from the
+      fork's `metadata.json`/`lyrics.txt`/`audio_codes.txt` artifacts; the
+      cover/repaint multipart path and `audio_codes` reuse are preserved. Two new
+      ASS features landed to support it:
+      - **`GET /v1/backends/{service}/info`** — read-only passthrough of a
+        backend's `/v1/info` (warms it to answer). SlopBC needs it for the Stable
+        Audio LoRA load order, which the job/`/v1/backends` surface didn't expose.
+      - **`[services.x].command`** — override a backend's container CMD (the
+        docker layer already had `RunSpec.Cmd`; now it's config). This is how
+        Stable Audio loads finetune LoRAs at startup (`--lora-ckpt-path`), the
+        way its standalone compose did; LoRAs live under `/srv/ass/loras/<svc>`.
+      Two accepted fidelity losses noted in SlopBC's TODO: no per-step progress
+      (ASS reports coarse state), and a batch's takes share ACE's one
+      `metadata.json` so per-take seeds collapse to the joined `seed_value`.
 - [x] **YuE fork: randomize a missing seed.** DONE in YuE-inference-server
       (`app/pipeline_runner.py`): `run_generation` rolls a real seed when the
       request omits one, so "blank = random" is true at the backend and the pick
