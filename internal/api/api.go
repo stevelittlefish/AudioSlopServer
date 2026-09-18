@@ -176,6 +176,10 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		Residency string `json:"residency"` // pinned | parked | stopped
 		Leases    int    `json:"leases"`    // in-flight jobs holding this backend
 		LastUsed  string `json:"last_used,omitempty"`
+		// Phase / PhaseSince: what's happening to this backend mid-swap, so the
+		// admin console can show "cold-starting… 0:42" instead of a dead button.
+		Phase      string `json:"phase,omitempty"`
+		PhaseSince string `json:"phase_since,omitempty"`
 	}
 	snap := a.arbiter.Snapshot()
 	var out []backendView
@@ -186,6 +190,7 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		}
 		if s, ok := snap[name]; ok {
 			bv.Residency, bv.Leases, bv.LastUsed = s.Residency, s.Leases, s.LastUsed
+			bv.Phase, bv.PhaseSince = s.Phase, s.PhaseSince
 		}
 		out = append(out, bv)
 	}

@@ -11,7 +11,7 @@
     --line:#242b35; --line2:#2f3945;
     --ink:#e7ecf3; --ink-dim:#8b97a7; --ink-faint:#5b6675;
     --accent:#5ee0b0; --accent-dim:#2b6b57;
-    --pinned:#5ee0b0; --parked:#f2c14e; --stopped:#5b6675;
+    --pinned:#5ee0b0; --parked:#f2c14e; --stopped:#5b6675; --working:#67b8ff;
     --danger:#ff6b6b; --danger-dim:#5a2626;
     --radius:14px;
     /* A terminal-y stack that works everywhere with no download: use whatever
@@ -97,6 +97,26 @@
   .badge { margin-left:auto; display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--state-c); }
   .badge .dot { width:9px; height:9px; border-radius:50%; background:var(--state-c); box-shadow:0 0 10px var(--state-c); }
   .card[data-res="stopped"] .badge .dot { box-shadow:none; }
+
+  /* Working: a swap is touching this backend right now. Blue, animated, and it
+     shows what the engine is actually doing + how long it's been at it, so a
+     long cold start reads as "alive and grinding", not "frozen". */
+  .card[data-working="1"] { --state-c:var(--working); border-color:#254257; }
+  .card[data-working="1"]::before { animation:sweep 1.3s ease-in-out infinite; }
+  @keyframes sweep { 0%,100%{opacity:.35} 50%{opacity:1} }
+  .card[data-working="1"] .badge .dot { animation:pulse 1s infinite; }
+  .phase {
+    display:none; align-items:center; gap:8px; margin:-6px 0 14px;
+    font-family:var(--mono); font-size:11.5px; color:var(--working);
+  }
+  .card[data-working="1"] .phase { display:flex; }
+  .phase .spin {
+    width:11px; height:11px; border-radius:50%;
+    border:2px solid rgba(103,184,255,.25); border-top-color:var(--working);
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .phase .elapsed { margin-left:auto; color:var(--ink-faint); }
 
   .meta { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-bottom:16px; font-size:12.5px; }
   .meta .k { color:var(--ink-faint); }
@@ -203,6 +223,24 @@ function relTime(iso) {
 
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
+// elapsed since an ISO instant, as m:ss — the live "it's been grinding this long"
+// counter next to a swap phase. Empty in, empty out.
+function elapsed(iso) {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return "";
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+
+// Tick the phase elapsed labels every second so a long load visibly counts up
+// between the 3s polls — cheap, no fetch, just re-reads each label's data-since.
+setInterval(() => {
+  document.querySelectorAll(".phase .elapsed[data-since]").forEach(e => {
+    if (e.dataset.since) e.textContent = elapsed(e.dataset.since);
+  });
+}, 1000);
+
 function toast(msg, isErr) {
   const el = $("#toast");
   el.textContent = msg;
@@ -222,15 +260,21 @@ function card(b) {
   const canPark   = b.evict === "park" && b.residency === "pinned";
   const canUnpark = b.residency === "parked";
   const canStop   = b.residency !== "stopped";
+  const working = !!b.phase;
   const el = document.createElement("div");
   el.className = "card";
   el.dataset.res = b.residency;
+  if (working) el.dataset.working = "1";
   el.innerHTML = `
     <div class="head">
       <span class="name"></span>
       <span class="verb"></span>
       <a class="testlink" title="Open the test page">test ▸</a>
       <span class="badge"><span class="dot"></span><span class="rtext"></span></span>
+    </div>
+    <div class="phase">
+      <span class="spin"></span><span class="ptext"></span>
+      <span class="elapsed" data-since=""></span>
     </div>
     <div class="meta">
       <span class="k">image</span><span class="v img"></span>
@@ -247,7 +291,13 @@ function card(b) {
   el.querySelector(".name").textContent = b.name;
   el.querySelector(".verb").textContent = b.verb || "—";
   el.querySelector(".testlink").href = "/test/" + encodeURIComponent(b.name);
-  el.querySelector(".rtext").textContent = b.residency;
+  el.querySelector(".rtext").textContent = working ? "working" : b.residency;
+  if (working) {
+    el.querySelector(".ptext").textContent = b.phase;
+    const els = el.querySelector(".elapsed");
+    els.dataset.since = b.phase_since || "";
+    els.textContent = elapsed(b.phase_since);
+  }
   el.querySelector(".img").textContent = shortImage(b.image);
   el.querySelector(".img").title = b.image || "";
   const lv = el.querySelector(".leasev");
@@ -287,6 +337,11 @@ async function refresh() {
     list.forEach(b => grid.appendChild(card(b)));
     renderCounts(list);
     $("#empty").hidden = list.length > 0;
+    // The GPU is a single lock: one swap at a time, project-wide. So if any
+    // backend is mid-swap (or we just fired an action), keep every action button
+    // disabled until the card settles — but the view itself keeps live-updating.
+    const busy = inFlight || list.some(b => b.phase);
+    if (busy) document.querySelectorAll(".actions button").forEach(x => x.disabled = true);
     $("#live").textContent = "live · " + new Date().toLocaleTimeString();
     refreshVRAM(); // fire-and-forget; VRAM telemetry updates alongside the backends
   } catch (e) {
@@ -374,7 +429,14 @@ async function unloadAll() {
 
 function loop() {
   clearTimeout(timer);
-  const tick = async () => { if (!inFlight) await refresh(); timer = setTimeout(tick, POLL_MS); };
+  // Always poll — even mid-action. A swap runs outside the arbiter's lock, so
+  // /v1/backends keeps answering with live residency + phase while it grinds;
+  // that's the whole point of the status view. During an action we poll faster
+  // so the phase and the victim's eviction show up promptly.
+  const tick = async () => {
+    await refresh();
+    timer = setTimeout(tick, inFlight ? 800 : POLL_MS);
+  };
   tick();
 }
 

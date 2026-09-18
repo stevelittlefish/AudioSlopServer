@@ -66,6 +66,13 @@ type state struct {
 	res      residency
 	leases   int
 	lastUsed time.Time
+	// phase is a transient, human-facing note about what's happening to this
+	// backend RIGHT NOW during a swap ("starting", "waiting for health",
+	// "parking", …). Empty when the backend is settled. It exists purely so the
+	// admin console can tell an operator "it's mid-load, hang tight" instead of a
+	// dead greyed-out button. Set under mu, cleared the moment residency settles.
+	phase      string
+	phaseSince time.Time
 }
 
 // Arbiter owns the residency map and serializes swaps. All mutable state lives
@@ -297,6 +304,10 @@ func (a *Arbiter) planLocked(target string) ([]string, bool) {
 // cold start). It re-takes the lock only to record the resulting residencies, so
 // the map always reflects reality even if a step fails partway.
 func (a *Arbiter) swap(ctx context.Context, victims []string, target string) error {
+	// Whatever happens, don't leave a stale "starting…" note stuck on a card if a
+	// step errors out partway. setResidency clears phases on the happy path;
+	// this catches the sad one.
+	defer a.clearPhases(append(append([]string{}, victims...), target)...)
 	for _, victim := range victims {
 		if err := a.demote(ctx, victim); err != nil {
 			return fmt.Errorf("evicting %s: %w", victim, err)
@@ -316,12 +327,14 @@ func (a *Arbiter) demote(ctx context.Context, victim string) error {
 	switch svc.Evict {
 	case config.EvictPark:
 		log.Printf("[arbiter] parking %s (weights -> CPU RAM, freeing GPU)", victim)
+		a.setPhase(victim, "parking (freeing GPU)")
 		if err := backend.New(a.sup.BaseURL(victim)).Park(ctx); err != nil {
 			return err
 		}
 		a.setResidency(victim, resParked)
 	default: // EvictStop (also the safe default)
 		log.Printf("[arbiter] stopping %s (container down, freeing all its RAM)", victim)
+		a.setPhase(victim, "stopping (freeing GPU)")
 		if err := a.sup.Stop(ctx, victim); err != nil {
 			return err
 		}
@@ -340,6 +353,7 @@ func (a *Arbiter) promote(ctx context.Context, target string) error {
 
 	if wasParked {
 		log.Printf("[arbiter] unparking %s (weights -> GPU, the fast path)", target)
+		a.setPhase(target, "unparking (weights -> GPU)")
 		if err := a.sup.EnsureUp(ctx, target); err != nil { // cheap: already running
 			return err
 		}
@@ -348,6 +362,7 @@ func (a *Arbiter) promote(ctx context.Context, target string) error {
 		}
 	} else {
 		log.Printf("[arbiter] cold-starting %s (weights from disk)", target)
+		a.setPhase(target, "cold-starting (container + model)")
 		if err := a.sup.EnsureUp(ctx, target); err != nil {
 			return err
 		}
@@ -356,7 +371,8 @@ func (a *Arbiter) promote(ctx context.Context, target string) error {
 	return nil
 }
 
-// setResidency records a backend's new residency under the lock.
+// setResidency records a backend's new residency under the lock. Reaching a
+// settled residency clears any transient phase note — the work is done.
 func (a *Arbiter) setResidency(service string, r residency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -367,6 +383,39 @@ func (a *Arbiter) setResidency(service string, r residency) {
 	}
 	st.res = r
 	st.lastUsed = a.now()
+	st.phase = ""
+	st.phaseSince = time.Time{}
+}
+
+// setPhase records what's happening to a backend mid-swap, for the status view.
+// A blank phase clears it. Safe on a backend the arbiter hasn't seen yet.
+func (a *Arbiter) setPhase(service, phase string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	st := a.states[service]
+	if st == nil {
+		st = &state{res: resStopped}
+		a.states[service] = st
+	}
+	st.phase = phase
+	if phase == "" {
+		st.phaseSince = time.Time{}
+	} else if st.phaseSince.IsZero() || st.phase != phase {
+		st.phaseSince = a.now()
+	}
+}
+
+// clearPhases wipes any lingering phase note from a set of backends. swap defers
+// this so a failed swap doesn't leave "starting…" stuck on a card forever.
+func (a *Arbiter) clearPhases(services ...string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, s := range services {
+		if st := a.states[s]; st != nil {
+			st.phase = ""
+			st.phaseSince = time.Time{}
+		}
+	}
 }
 
 // BackendState is a read-only snapshot for the /v1/backends view. VRAMMB is what
@@ -378,6 +427,11 @@ type BackendState struct {
 	Leases    int    `json:"leases"`
 	LastUsed  string `json:"last_used,omitempty"`
 	VRAMMB    int    `json:"vram_mb"`
+	// Phase is a transient note about an in-flight swap ("cold-starting…",
+	// "parking…"). Empty when settled. PhaseSince lets the UI show an elapsed
+	// timer so a long load looks alive, not hung.
+	Phase      string `json:"phase,omitempty"`
+	PhaseSince string `json:"phase_since,omitempty"`
 }
 
 // Snapshot returns the current residency of every backend the arbiter has
@@ -396,6 +450,12 @@ func (a *Arbiter) Snapshot() map[string]BackendState {
 		}
 		if !st.lastUsed.IsZero() {
 			bs.LastUsed = st.lastUsed.UTC().Format(time.RFC3339)
+		}
+		if st.phase != "" {
+			bs.Phase = st.phase
+			if !st.phaseSince.IsZero() {
+				bs.PhaseSince = st.phaseSince.UTC().Format(time.RFC3339)
+			}
 		}
 		out[name] = bs
 	}
