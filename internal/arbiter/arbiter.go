@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -153,8 +154,8 @@ func (a *Arbiter) Acquire(ctx context.Context, service string) (func(), error) {
 		}
 
 		// We need to make room and promote `service`. Is there capacity, or must
-		// we evict? Pick an LRU victim if the card is full.
-		victim, ok := a.planLocked(service)
+		// we evict? planLocked returns the LRU victims to demote first (maybe none).
+		victims, ok := a.planLocked(service)
 		if !ok {
 			// The card is full and every resident is busy (has leases). Wait for
 			// one to drain, then try again.
@@ -166,7 +167,7 @@ func (a *Arbiter) Acquire(ctx context.Context, service string) (func(), error) {
 		// so status reads and same-backend leases aren't blocked on our I/O.
 		a.swapping = true
 		a.mu.Unlock()
-		err := a.swap(ctx, victim, service)
+		err := a.swap(ctx, victims, service)
 		a.mu.Lock()
 		a.swapping = false
 		a.cond.Broadcast() // whatever happened, waiters must reassess
@@ -200,46 +201,103 @@ func (a *Arbiter) releaser(service string) func() {
 	}
 }
 
-// planLocked decides, for promoting `target`, whether we can proceed now and if
-// so which resident to evict. Returns (victim, true) to go ahead — victim is ""
-// when the card has spare capacity and nobody needs evicting. Returns ("", false)
-// when the card is full and every resident is busy, so the caller must wait.
+// vramPinned / vramParked are what a service costs the card in each residency.
+// Parked keeps only the context tax; stopped keeps nothing (its parked cost is
+// normalized to 0 in config). Both are declared per service — see config.
+func (a *Arbiter) vramPinned(name string) int { return a.cfg.Services[name].VRAMPinnedMB }
+func (a *Arbiter) vramParked(name string) int { return a.cfg.Services[name].VRAMParkedMB }
+
+// planLocked decides, for promoting `target`, whether we can proceed now and, if
+// so, which residents to evict first. Returns (victims, true) to go ahead —
+// victims is empty when the card has room and nobody needs evicting, or a list
+// (LRU-first) that must be demoted before target fits. Returns (nil, false) when
+// the card is full and everything left resident is busy, so the caller must wait.
 //
-// Only *pinned* backends count against the GPU capacity: parked backends have
-// handed their VRAM back (bar the context tax, a later budgeting concern). The
-// victim is the least-recently-used pinned backend with no active leases.
-func (a *Arbiter) planLocked(target string) (string, bool) {
-	pinned := 0
-	var victim string
-	var victimUsed time.Time
+// Two gates, both optional. When gpu.vram_budget_mb is set, VRAM MB is the real
+// limit: every pinned backend costs its vram_pinned_mb, every parked backend its
+// vram_parked_mb context tax, and their sum plus target must stay under budget.
+// When gpu.max_resident is set (>0), it's an additional hard cap on the pin
+// count. With no budget configured we fall back to the pure count gate (the
+// pre-budget behaviour, max_resident defaulting to 1).
+//
+// One eviction often isn't enough under a budget — evicting demucs won't make
+// room for ACE-Step — so we evict the LRU non-leased pinned backends one at a
+// time until target fits, or run out of evictable backends and must wait.
+func (a *Arbiter) planLocked(target string) ([]string, bool) {
+	budgeted := a.cfg.GPU.VRAMBudgetMB > 0
+	capped := a.cfg.GPU.MaxResident > 0
+
+	committed, pinnedCount := 0, 0
 	for name, st := range a.states {
-		if st.res != resPinned {
-			continue
-		}
-		pinned++
-		if st.leases > 0 {
-			continue // in use — can't evict this one
-		}
-		if victim == "" || st.lastUsed.Before(victimUsed) {
-			victim, victimUsed = name, st.lastUsed
+		switch st.res {
+		case resPinned:
+			committed += a.vramPinned(name)
+			pinnedCount++
+		case resParked:
+			committed += a.vramParked(name)
 		}
 	}
 
-	if pinned < a.cfg.GPU.MaxResident {
-		return "", true // room to spare — promote without evicting
+	// Promoting target: it becomes pinned. If it was parked its tax is already in
+	// committed, so promotion only adds the difference; if stopped it adds the lot.
+	targetCur := 0
+	if st := a.states[target]; st != nil && st.res == resParked {
+		targetCur = a.vramParked(target)
 	}
-	if victim == "" {
-		return "", false // full, and everything resident is busy: must wait
+	projCommitted := committed + a.vramPinned(target) - targetCur
+	projCount := pinnedCount + 1
+
+	fits := func() bool {
+		if budgeted && projCommitted > a.cfg.GPU.VRAMBudgetMB {
+			return false
+		}
+		if capped && projCount > a.cfg.GPU.MaxResident {
+			return false
+		}
+		return true
 	}
-	return victim, true
+	if fits() {
+		return nil, true
+	}
+
+	// Doesn't fit: evict LRU-first among the pinned backends with no active lease
+	// (and never the target itself). Each eviction frees its pinned cost, minus
+	// whatever it retains parked (a stop victim retains nothing; a park victim
+	// keeps its context tax on the card).
+	type cand struct {
+		name string
+		used time.Time
+	}
+	var cands []cand
+	for name, st := range a.states {
+		if st.res == resPinned && st.leases == 0 && name != target {
+			cands = append(cands, cand{name, st.lastUsed})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].used.Before(cands[j].used) })
+
+	var victims []string
+	for _, c := range cands {
+		retained := 0
+		if a.cfg.Services[c.name].Evict == config.EvictPark {
+			retained = a.vramParked(c.name)
+		}
+		projCommitted -= a.vramPinned(c.name) - retained
+		projCount--
+		victims = append(victims, c.name)
+		if fits() {
+			return victims, true
+		}
+	}
+	return nil, false // full, and everything evictable has been counted: must wait
 }
 
-// swap does the slow part outside the arbiter lock: demote the victim (park or
+// swap does the slow part outside the arbiter lock: demote each victim (park or
 // stop, per its config) and promote the target (unpark if it was parked, else a
 // cold start). It re-takes the lock only to record the resulting residencies, so
 // the map always reflects reality even if a step fails partway.
-func (a *Arbiter) swap(ctx context.Context, victim, target string) error {
-	if victim != "" {
+func (a *Arbiter) swap(ctx context.Context, victims []string, target string) error {
+	for _, victim := range victims {
 		if err := a.demote(ctx, victim); err != nil {
 			return fmt.Errorf("evicting %s: %w", victim, err)
 		}
@@ -311,11 +369,15 @@ func (a *Arbiter) setResidency(service string, r residency) {
 	st.lastUsed = a.now()
 }
 
-// BackendState is a read-only snapshot for the /v1/backends view.
+// BackendState is a read-only snapshot for the /v1/backends view. VRAMMB is what
+// this backend is costing the card right now (its pinned cost while pinned, its
+// park tax while parked, 0 while stopped) — the raw material for spotting why a
+// swap evicted something, or how close to gpu.vram_budget_mb you are.
 type BackendState struct {
 	Residency string `json:"residency"`
 	Leases    int    `json:"leases"`
 	LastUsed  string `json:"last_used,omitempty"`
+	VRAMMB    int    `json:"vram_mb"`
 }
 
 // Snapshot returns the current residency of every backend the arbiter has
@@ -326,6 +388,12 @@ func (a *Arbiter) Snapshot() map[string]BackendState {
 	out := make(map[string]BackendState, len(a.states))
 	for name, st := range a.states {
 		bs := BackendState{Residency: st.res.String(), Leases: st.leases}
+		switch st.res {
+		case resPinned:
+			bs.VRAMMB = a.vramPinned(name)
+		case resParked:
+			bs.VRAMMB = a.vramParked(name)
+		}
 		if !st.lastUsed.IsZero() {
 			bs.LastUsed = st.lastUsed.UTC().Format(time.RFC3339)
 		}

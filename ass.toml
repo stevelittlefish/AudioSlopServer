@@ -14,10 +14,18 @@ ram_budget_mb = 96000
 enabled = true         # real server has a card; hand it to whichever backend is
                        # resident. (The dev box sets this false in ass.dev.toml.)
 device = 0             # the one card ASS is allowed to monopolize
-vram_budget_mb = 24000 # card size minus headroom; covers pinned model + park tax
-context_tax_mb = 400   # VRAM a parked (alive) process holds, charged per backend.
-                       # Measured: demucs holds ~354 MiB parked on a 3090 (model
-                       # weights freed, CUDA context remains) — see docs/measurements.md.
+# The MB ASS may actually put on this card, and the real gate now: the arbiter
+# sums each pinned backend's vram_pinned_mb + each parked backend's park tax and
+# keeps the total under this. GPU 0 is SHARED, so this is the card MINUS what ASS
+# can't touch: 24000 (3090) − ~2100 (wyoming-whisper, permanent) − ~400 (driver)
+# ≈ 21500. Not the full 24GB. See docs/measurements.md.
+vram_budget_mb = 21500
+# max_resident is a secondary hard cap on how many backends may be pinned at once.
+# 0 = unlimited: let vram_budget_mb decide (the whole point — pack as many as fit).
+max_resident = 0
+context_tax_mb = 400   # default parked VRAM tax for a park backend that hasn't set
+                       # its own vram_parked_mb. Measured: demucs holds ~354 MiB
+                       # parked on a 3090 (weights freed, CUDA context remains).
 
 [server]
 addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex).
@@ -41,6 +49,8 @@ image = "ghcr.io/stevelittlefish/stem-separator:latest"
 port  = 5336
 verb  = "separate"
 evict = "park"          # small enough to keep parked in RAM
+vram_pinned_mb = 2000   # MEASURED peak: ~1.6GB mid-separate on a 4080; 2000 w/ headroom.
+vram_parked_mb = 400    # MEASURED: 354 MiB parked on a 3090 (see docs/measurements.md).
 ram_reserve_mb = 1000
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 4096      # demucs wants elbow room (compose sets 4gb)
@@ -70,6 +80,9 @@ verb  = "generate"      # POST /v1/generate; returns audio.wav (+ spectrogram)
 evict = "park"          # cold start reloads a multi-GB checkpoint + flash-attn,
                         # so the fast park/unpark swap earns its keep here. The
                         # peasant box (tight RAM) should switch this to "stop".
+vram_pinned_mb = 6000   # UNMEASURED estimate for the medium model's peak — measure
+                        # with scripts/measure-vram.sh and raise it here if you OOM.
+vram_parked_mb = 800    # UNMEASURED park tax estimate; falls back to context_tax if 0.
 ram_reserve_mb = 8000   # rough parked-in-RAM cost of the medium model; UNMEASURED
                         # — refine once we run it on the box (see docs/measurements.md).
 idle_ttl = "0"          # never reclaim parked RAM on the big server
@@ -104,6 +117,9 @@ evict = "park"          # ACE-Step is the backend park pays off MOST for: its co
                         # park analysis in docs/measurements.md. Context tax is the
                         # one number still to confirm on the box (expected 0.5-2GB;
                         # fits GPU 0's ~21.5GB usable with room to spare).
+vram_pinned_mb = 10000  # DiT ~9GB on the card + inference headroom. Peak UNMEASURED
+                        # — measure with scripts/measure-vram.sh and raise on OOM.
+vram_parked_mb = 1500   # predicted context tax (0.5-2GB); the one number to confirm.
 ram_reserve_mb = 14000  # parked-in-RAM estimate: DiT ~9GB + LM 1.7B ~3.5GB + Qwen
                         # text-enc ~1.2GB + VAE ~0.3GB. Still UNMEASURED — refine on
                         # the box (see docs/measurements.md method).
@@ -155,6 +171,9 @@ evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
                         # (context tax) and unpark latency are still UNMEASURED —
                         # confirm on the box (docs/measurements.md) and drop back to
                         # "stop" only if the numbers don't justify holding it in RAM.
+vram_pinned_mb = 8000   # UNMEASURED estimate for the 3B model's peak — measure with
+                        # scripts/measure-vram.sh and raise it here if you OOM.
+vram_parked_mb = 1000   # UNMEASURED park tax estimate.
 ram_reserve_mb = 10000  # rough parked-in-RAM guess for the 3B model; UNMEASURED —
                         # refine on the box before trusting it.
 idle_ttl = "0"          # never reclaim parked RAM on the big server

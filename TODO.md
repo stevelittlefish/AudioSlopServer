@@ -80,13 +80,25 @@ by leases. `/v1/backends` now reports live residency + lease counts.
       lazy, jobs async — a cold reload on restart is a fair price for no ghosts).
       `docker.List(label)` added as the one new primitive; tested against the mock.
 
-Not yet done in slice 2 (deferred — needs data we don't have):
-- [ ] VRAM/RAM budgeting: count pinned model + per-parked context tax against the
-      budget. Needs real per-service weight sizes (see "Real weight-size
-      measurements" below); today the invariant is a simple pin *count*, not MB.
-- [ ] LRU across >1 resident: victim selection is real LRU code, but with
-      `max_resident = 1` there's only ever one victim. Exercise it once budgeting
-      allows a fit-set of 2+.
+Done in slice 2:
+- [x] VRAM budgeting (MB, not a pin count). The arbiter sums each pinned backend's
+      `vram_pinned_mb` + each parked backend's `vram_parked_mb` context tax and keeps
+      the total under `gpu.vram_budget_mb`; `max_resident = 0` means "unlimited, let
+      the budget decide." Per-service costs are configurable so an OOM is a one-line
+      tweak (raise that service's `vram_pinned_mb`). `scripts/measure-vram.sh` produces
+      the numbers. With no budget set it falls back to the old pin-count gate.
+- [x] LRU across >1 resident + multi-victim eviction: one eviction often can't free
+      enough (evicting demucs won't seat ACE-Step), so `planLocked` evicts LRU
+      non-leased pinned backends one at a time until the newcomer fits. Covered by
+      TestVRAMBudget.
+
+Still to do here:
+- [ ] Confirm the estimated `vram_pinned_mb` / `vram_parked_mb` on the box with
+      scripts/measure-vram.sh — demucs is measured; SA3, ACE-Step and YuE are
+      estimates flagged UNMEASURED in ass.toml. The budget is only as good as these.
+- [ ] Hardening (later): the budget is SOFT — ASS trusts the declared numbers, it
+      doesn't watch the card. A future step could reconcile against live nvidia-smi
+      and refuse to pin when the card is actually fuller than declared.
 
 ## Now — First real backend: stem-separator (Demucs)
 

@@ -150,6 +150,18 @@ a lazy loader) and **max** (the inference peak the VRAM budget must fit); with
 `--port` it then POSTs `/park` and reports the parked floor and the weights
 freed. Record the row above.
 
+These map straight onto the arbiter's VRAM budget knobs in `ass.toml`:
+
+- **max → `services.<svc>.vram_pinned_mb`** — the peak the budget must fit. This
+  is the number to raise if a service OOMs.
+- **parked floor → `services.<svc>.vram_parked_mb`** — the context tax a parked
+  backend keeps on the card (falls back to `gpu.context_tax_mb` if unset).
+
+The arbiter keeps `Σ pinned vram_pinned_mb + Σ parked vram_parked_mb` under
+`gpu.vram_budget_mb`, evicting LRU residents until a newcomer fits. It trusts
+these declared numbers (a soft budget), so an under-declared peak can still OOM —
+the fix is to bump `vram_pinned_mb`.
+
 ## Method (so numbers stay comparable)
 
 `nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits` (MiB), sampled

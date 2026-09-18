@@ -105,6 +105,19 @@ type Service struct {
 	Evict        EvictPolicy       `toml:"evict"` // park | stop
 	RAMReserveMB int               `toml:"ram_reserve_mb"`
 	IdleTTL      Duration          `toml:"idle_ttl"` // 0 = never reclaim parked RAM
+
+	// VRAMPinnedMB is what this service holds on the card while it's pinned. Use
+	// the MEASURED PEAK (the "max" from scripts/measure-vram.sh), not the idle
+	// floor — the budget has to survive the worst moment of concurrent inference,
+	// and since backends load lazily we reserve the declared cost the instant a
+	// backend is pinned rather than waiting to watch real usage. THIS is the knob
+	// to raise if you get OOM errors.
+	VRAMPinnedMB int `toml:"vram_pinned_mb"`
+	// VRAMParkedMB is the context tax this service holds while parked (weights on
+	// CPU, CUDA context + workspaces still on the card). Only meaningful for
+	// evict = "park"; a stopped backend holds nothing. Defaults to gpu.context_tax_mb
+	// when left 0 on a park service, and is forced to 0 for a stop service.
+	VRAMParkedMB int `toml:"vram_parked_mb"`
 }
 
 // ContainerName is the container name for this service, defaulting to
@@ -165,11 +178,18 @@ func (c *Config) validate() error {
 	if c.Storage.ResultsDir == "" {
 		c.Storage.ResultsDir = "data/results"
 	}
-	if c.GPU.MaxResident == 0 {
-		c.GPU.MaxResident = 1 // one model on the card, as nature intended
+	// Two ways to gate the card. When vram_budget_mb is set, VRAM MB is the real
+	// limit and max_resident is an optional secondary cap (0 = unlimited, let the
+	// budget decide). When no budget is given, we fall back to the old count gate,
+	// so max_resident defaults to 1 — "one model on the card, as nature intended."
+	if c.GPU.VRAMBudgetMB == 0 && c.GPU.MaxResident == 0 {
+		c.GPU.MaxResident = 1
 	}
 	if c.GPU.MaxResident < 0 {
 		return fmt.Errorf("gpu.max_resident %d is negative — that's fewer than no models", c.GPU.MaxResident)
+	}
+	if c.GPU.VRAMBudgetMB < 0 {
+		return fmt.Errorf("gpu.vram_budget_mb %d is negative", c.GPU.VRAMBudgetMB)
 	}
 	if len(c.Services) == 0 {
 		return fmt.Errorf("no [services.*] configured — ASS with nothing to serve is just S")
@@ -192,6 +212,21 @@ func (c *Config) validate() error {
 		default:
 			return fmt.Errorf("service %q: unknown evict policy %q (want park|stop)", name, svc.Evict)
 		}
+
+		// VRAM accounting only matters when a budget is in force. Then every
+		// service must declare what it costs pinned, or the budget math treats it
+		// as free and happily overcommits the card into an OOM.
+		if c.GPU.VRAMBudgetMB > 0 && svc.VRAMPinnedMB <= 0 {
+			return fmt.Errorf("service %q: vram_pinned_mb must be set when gpu.vram_budget_mb is (measure it with scripts/measure-vram.sh)", name)
+		}
+		// Parked tax: a stop service never parks, so it holds nothing; a park
+		// service defaults to the global context tax when it hasn't measured its own.
+		if svc.Evict == EvictStop {
+			svc.VRAMParkedMB = 0
+		} else if svc.VRAMParkedMB == 0 {
+			svc.VRAMParkedMB = c.GPU.ContextTaxMB
+		}
+		c.Services[name] = svc
 	}
 	return nil
 }

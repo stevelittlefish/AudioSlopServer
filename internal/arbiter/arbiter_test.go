@@ -143,6 +143,49 @@ func TestSwap(t *testing.T) {
 	rel3()
 }
 
+// TestVRAMBudget is the point of the whole exercise: with a memory budget (not a
+// pin count) multiple small backends co-reside, and a big newcomer evicts as many
+// LRU residents as it takes to fit — not just one.
+func TestVRAMBudget(t *testing.T) {
+	sup := newFakeSup(t, "a", "b", "big")
+	cfg := &config.Config{
+		GPU: config.GPU{VRAMBudgetMB: 10000}, // MB gate, no pin cap
+		Services: map[string]config.Service{
+			"a":   {Image: "x", Port: 1, Evict: config.EvictPark, VRAMPinnedMB: 3000, VRAMParkedMB: 500},
+			"b":   {Image: "x", Port: 2, Evict: config.EvictPark, VRAMPinnedMB: 3000, VRAMParkedMB: 500},
+			"big": {Image: "x", Port: 3, Evict: config.EvictStop, VRAMPinnedMB: 8000},
+		},
+	}
+	a := New(sup, cfg)
+	ctx := context.Background()
+
+	// a and b both fit at once (3000 + 3000 <= 10000): no eviction.
+	r1, _ := a.Acquire(ctx, "a")
+	r1()
+	r2, _ := a.Acquire(ctx, "b")
+	r2()
+	snap := a.Snapshot()
+	if snap["a"].Residency != "pinned" || snap["b"].Residency != "pinned" {
+		t.Fatalf("a and b should co-reside; got a=%s b=%s", snap["a"].Residency, snap["b"].Residency)
+	}
+
+	// big (8000) doesn't fit beside 6000 committed. Both a and b are LRU + unleased,
+	// and evicting only one (freeing 2500 after its park tax) still leaves 3500+8000
+	// over budget — so BOTH must be parked before big fits.
+	r3, err := a.Acquire(ctx, "big")
+	if err != nil {
+		t.Fatalf("acquire big: %v", err)
+	}
+	snap = a.Snapshot()
+	if snap["big"].Residency != "pinned" {
+		t.Fatalf("big residency = %q, want pinned", snap["big"].Residency)
+	}
+	if snap["a"].Residency != "parked" || snap["b"].Residency != "parked" {
+		t.Fatalf("both a and b should be parked to make room; got a=%s b=%s", snap["a"].Residency, snap["b"].Residency)
+	}
+	r3()
+}
+
 // TestLeaseBlocksEviction proves a running job protects its backend: a swap that
 // would evict a leased backend must wait until the lease is released.
 func TestLeaseBlocksEviction(t *testing.T) {
