@@ -22,7 +22,7 @@ import (
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
-//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html assets/test.css assets/test-common.js assets/logo.svg
+//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html assets/test.css assets/test-common.js assets/logo.svg assets/logo-bars.svg
 var assets embed.FS
 
 // servicePages maps a configured service name to its bespoke test page. A
@@ -54,11 +54,15 @@ func Register(mux *http.ServeMux, cfg *config.Config) {
 	mux.Handle("GET /assets/test.css", asset("assets/test.css", "text/css; charset=utf-8"))
 	mux.Handle("GET /assets/test-common.js", asset("assets/test-common.js", "text/javascript; charset=utf-8"))
 
-	// The logo, used both as the header mark and (via <link rel="icon">) the
-	// favicon — one SVG, no PNG/ICO conversion step (CLAUDE.md: no build step).
-	// /favicon.ico is served too so the browser's automatic probe doesn't 404.
+	// Two logo variants, no PNG/ICO conversion step (CLAUDE.md: no build step).
+	// logo.svg is the full mark WITH its rounded-square backdrop — good as the
+	// favicon (needs its own field). logo-bars.svg is just the wave bars on a
+	// transparent ground, for the header, where the glow filter would otherwise
+	// bloom the backdrop square instead of the bars. /favicon.ico is served too so
+	// the browser's automatic probe doesn't 404.
 	logo := asset("assets/logo.svg", "image/svg+xml")
 	mux.Handle("GET /assets/logo.svg", logo)
+	mux.Handle("GET /assets/logo-bars.svg", asset("assets/logo-bars.svg", "image/svg+xml"))
 	mux.Handle("GET /favicon.ico", logo)
 
 	// Per-service test page. We reject unknown services up front, then serve
