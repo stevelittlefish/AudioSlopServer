@@ -95,6 +95,44 @@ func TestOperatorUnpark(t *testing.T) {
 	}
 }
 
+// TestOperatorWarm: the "load it now" button. A stopped backend gets cold-started
+// to pinned (no lease left behind), and warming over a full slot evicts the LRU
+// idle resident just like a job would.
+func TestOperatorWarm(t *testing.T) {
+	sup := newFakeSup(t, "demucs", "yue")
+	a := New(sup, testConfig())
+	ctx := context.Background()
+
+	// Warm demucs from stopped -> pinned via a cold start (EnsureUp, no lease).
+	if err := a.Warm(ctx, "demucs"); err != nil {
+		t.Fatalf("warm demucs: %v", err)
+	}
+	snap := a.Snapshot()
+	if snap["demucs"].Residency != "pinned" {
+		t.Fatalf("demucs = %q, want pinned", snap["demucs"].Residency)
+	}
+	if snap["demucs"].Leases != 0 {
+		t.Fatalf("warm should leave no lease; leases = %d", snap["demucs"].Leases)
+	}
+
+	// Warming an already-pinned backend is an idempotent no-op.
+	if err := a.Warm(ctx, "demucs"); err != nil {
+		t.Fatalf("warm already-pinned: %v", err)
+	}
+
+	// Warm yue on a full single slot -> must evict idle demucs (park, its policy).
+	if err := a.Warm(ctx, "yue"); err != nil {
+		t.Fatalf("warm yue over demucs: %v", err)
+	}
+	snap = a.Snapshot()
+	if snap["yue"].Residency != "pinned" {
+		t.Fatalf("yue = %q, want pinned", snap["yue"].Residency)
+	}
+	if snap["demucs"].Residency != "parked" {
+		t.Fatalf("demucs = %q, want parked (evicted to make room)", snap["demucs"].Residency)
+	}
+}
+
 // TestOperatorLeaseProtection: an operator can't evict a backend with an
 // in-flight job — the lease wins, and the action is refused with LeaseHeldError.
 func TestOperatorLeaseProtection(t *testing.T) {

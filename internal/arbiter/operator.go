@@ -110,6 +110,31 @@ func (a *Arbiter) Unpark(ctx context.Context, service string) error {
 	})
 }
 
+// Warm brings a backend onto the GPU proactively — the operator's "load it now"
+// button, so the first real job doesn't eat the cold start. It's the inverse of
+// Stop and goes through the same capacity planning a job would: if the card is
+// full it evicts the LRU idle residents first (per budget), then promotes the
+// target (cold-start if stopped, unpark if parked) to pinned. No lease is taken,
+// so lazy eviction leaves it pinned until something else needs the card.
+// Idempotent for an already-pinned backend; refused only if the card can't be
+// cleared (everything resident is busy).
+func (a *Arbiter) Warm(ctx context.Context, service string) error {
+	if _, ok := a.cfg.Services[service]; !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownService, service)
+	}
+	return a.operate(ctx, func() (func() error, error) {
+		st := a.states[service]
+		if st != nil && st.res == resPinned {
+			return nil, nil // already hot
+		}
+		victims, ok := a.planLocked(service)
+		if !ok {
+			return nil, fmt.Errorf("%w: cannot make room to load %s", ErrGPUBusy, service)
+		}
+		return func() error { return a.swap(ctx, victims, service) }, nil
+	})
+}
+
 // Stop takes a backend's container all the way down (weights back to disk),
 // whatever its residency or evict policy — the fullest possible unload of a
 // single backend. Idempotent: stopping an already-stopped backend is a no-op.

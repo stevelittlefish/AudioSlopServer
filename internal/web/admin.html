@@ -218,6 +218,7 @@ function shortImage(img) {
 }
 
 function card(b) {
+  const canLoad   = b.residency === "stopped";   // cold-start it onto the GPU, no job
   const canPark   = b.evict === "park" && b.residency === "pinned";
   const canUnpark = b.residency === "parked";
   const canStop   = b.residency !== "stopped";
@@ -238,6 +239,7 @@ function card(b) {
       <span class="k">last used</span><span class="v lastv"></span>
     </div>
     <div class="actions">
+      <button class="act-load">Load</button>
       <button class="act-park">Park</button>
       <button class="act-unpark">Unpark</button>
       <button class="act-stop danger">Stop</button>
@@ -254,9 +256,11 @@ function card(b) {
   el.querySelector(".evictv").textContent = b.evict || "stop";
   el.querySelector(".lastv").textContent = relTime(b.last_used);
 
+  const ld = el.querySelector(".act-load");
   const pk = el.querySelector(".act-park");
   const up = el.querySelector(".act-unpark");
   const sp = el.querySelector(".act-stop");
+  ld.disabled = !canLoad;   ld.onclick = () => act(b.name, "load");
   pk.disabled = !canPark;   pk.onclick = () => act(b.name, "park");
   up.disabled = !canUnpark; up.onclick = () => act(b.name, "unpark");
   sp.disabled = !canStop;   sp.onclick = () => act(b.name, "stop");

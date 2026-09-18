@@ -48,6 +48,7 @@ func (a *API) Handler() http.Handler {
 	// buttons and there's no auth yet, so a box that wants API-only turns them off.
 	if a.cfg.WebEnabled() {
 		mux.HandleFunc("POST /v1/backends/unload-all", a.handleUnloadAll)
+		mux.HandleFunc("POST /v1/backends/{service}/load", a.handleLoadBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/park", a.handleParkBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/unpark", a.handleUnparkBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/stop", a.handleStopBackend)
@@ -223,6 +224,9 @@ func (a *API) handleVRAM(w http.ResponseWriter, r *http.Request) {
 // backendOp is the shape of the arbiter's park/unpark/stop methods.
 type backendOp func(ctx context.Context, service string) error
 
+func (a *API) handleLoadBackend(w http.ResponseWriter, r *http.Request) {
+	a.doBackendOp(w, r, a.arbiter.Warm)
+}
 func (a *API) handleParkBackend(w http.ResponseWriter, r *http.Request) {
 	a.doBackendOp(w, r, a.arbiter.Park)
 }
