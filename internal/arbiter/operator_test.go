@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
 // TestOperatorParkStop covers the by-hand residency controls: park a pinned
@@ -240,5 +242,88 @@ func TestUnloadAll(t *testing.T) {
 	}
 	if len(res.Unloaded) != 1 || res.Unloaded[0] != "yue" {
 		t.Fatalf("unloaded = %v, want [yue]", res.Unloaded)
+	}
+}
+
+// TestPreloadAll: every parkable backend ends up parked, biggest first, without
+// anything being stopped; stop-policy backends are reported skipped; a leased
+// resident that blocks the room is left alone and the candidate is skipped.
+func TestPreloadAll(t *testing.T) {
+	sup := newFakeSup(t, "a", "b", "big", "coldonly")
+	cfg := &config.Config{
+		GPU: config.GPU{VRAMBudgetMB: 10000},
+		Services: map[string]config.Service{
+			"a":        {Image: "x", Port: 1, Evict: config.EvictPark, VRAMPinnedMB: 3000, VRAMParkedMB: 500},
+			"b":        {Image: "x", Port: 2, Evict: config.EvictPark, VRAMPinnedMB: 3000, VRAMParkedMB: 500},
+			"big":      {Image: "x", Port: 3, Evict: config.EvictPark, VRAMPinnedMB: 8000, VRAMParkedMB: 1000},
+			"coldonly": {Image: "x", Port: 4, Evict: config.EvictStop, VRAMPinnedMB: 1000},
+		},
+	}
+	a := New(sup, cfg)
+	ctx := context.Background()
+
+	res, err := a.PreloadAll(ctx)
+	if err != nil {
+		t.Fatalf("preload: %v", err)
+	}
+	// Biggest first: big (8000) loads into an empty card, parks to 1000; then a
+	// (3000 + 1000 = 4000 fits), parks; then b (3000 + 1500 fits), parks.
+	want := []string{"big", "a", "b"}
+	if len(res.Preloaded) != 3 || res.Preloaded[0] != "big" {
+		t.Fatalf("preloaded = %v, want %v", res.Preloaded, want)
+	}
+	snap := a.Snapshot()
+	for _, n := range want {
+		if snap[n].Residency != "parked" {
+			t.Fatalf("%s residency = %s, want parked", n, snap[n].Residency)
+		}
+	}
+	if r := snap["coldonly"].Residency; r != "" && r != "stopped" { // never touched = absent
+		t.Fatalf("coldonly should be untouched, got %s", snap["coldonly"].Residency)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].Service != "coldonly" {
+		t.Fatalf("skipped = %+v, want just coldonly", res.Skipped)
+	}
+	if len(sup.stopped) != 0 {
+		t.Fatalf("preload must never stop anything; stopped = %v", sup.stopped)
+	}
+
+	// Idempotent: a second run finds everything already parked.
+	res, err = a.PreloadAll(ctx)
+	if err != nil || len(res.Preloaded) != 0 {
+		t.Fatalf("second preload = %+v (err %v), want nothing preloaded", res, err)
+	}
+
+	// A leased pinned resident hogging the card blocks a candidate that needs
+	// the room, and is NOT parked. Stop a, then lease big (unparks it: 8000
+	// pinned + b's 500 park tax = 8500). Reloading a needs 3000 more: over
+	// budget, and the only pinned resident is leased, so a is skipped.
+	if err := a.Stop(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := a.Acquire(ctx, "big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = a.PreloadAll(ctx)
+	rel()
+	if err != nil {
+		t.Fatalf("preload with leased big: %v", err)
+	}
+	if len(res.Preloaded) != 0 {
+		t.Fatalf("preloaded %v while big was leased and the card full", res.Preloaded)
+	}
+	skipped := map[string]string{}
+	for _, s := range res.Skipped {
+		skipped[s.Service] = s.Reason
+	}
+	if skipped["a"] == "" {
+		t.Fatalf("a should be skipped for lack of room; skipped = %+v", res.Skipped)
+	}
+	if a.Snapshot()["big"].Residency != "pinned" {
+		t.Fatalf("leased big must not be parked by preload")
+	}
+	if len(sup.stopped) != 1 { // only our own explicit Stop(a)
+		t.Fatalf("preload must never stop anything; stopped = %v", sup.stopped)
 	}
 }

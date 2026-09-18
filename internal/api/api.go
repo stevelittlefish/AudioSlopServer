@@ -48,6 +48,7 @@ func (a *API) Handler() http.Handler {
 	// buttons and there's no auth yet, so a box that wants API-only turns them off.
 	if a.cfg.WebEnabled() {
 		mux.HandleFunc("POST /v1/backends/unload-all", a.handleUnloadAll)
+		mux.HandleFunc("POST /v1/backends/preload-all", a.handlePreloadAll)
 		mux.HandleFunc("POST /v1/backends/{service}/load", a.handleLoadBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/park", a.handleParkBackend)
 		mux.HandleFunc("POST /v1/backends/{service}/unpark", a.handleUnparkBackend)
@@ -305,6 +306,24 @@ func (a *API) handleUnloadAll(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.Unloaded == nil {
 		res.Unloaded = []string{} // render [] not null for an empty result
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handlePreloadAll: cold-start and park every parkable backend that fits, so
+// the day's first requests unpark instead of cold-starting. Slow — it's N model
+// loads in a row — so the client should expect to wait a while for the body.
+func (a *API) handlePreloadAll(w http.ResponseWriter, r *http.Request) {
+	res, err := a.arbiter.PreloadAll(r.Context())
+	if res.Preloaded == nil {
+		res.Preloaded = []string{} // [] not null
+	}
+	if err != nil {
+		// Partial success still carries what did get preloaded.
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(), "preloaded": res.Preloaded, "skipped": res.Skipped,
+		})
+		return
 	}
 	writeJSON(w, http.StatusOK, res)
 }

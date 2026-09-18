@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/stevelittlefish/AudioSlopServer/internal/backend"
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
@@ -281,4 +282,183 @@ func (a *Arbiter) stopBackend(ctx context.Context, service string) error {
 	}
 	a.setResidency(service, resStopped)
 	return nil
+}
+
+// --- preload-all ------------------------------------------------------------
+
+// PreloadResult reports what PreloadAll did: which backends it cold-started and
+// parked, and which it skipped and why (already resident, not parkable, or no
+// room without stopping something).
+type PreloadResult struct {
+	Preloaded []string      `json:"preloaded"`
+	Skipped   []PreloadSkip `json:"skipped,omitempty"`
+}
+
+// PreloadSkip is one backend PreloadAll left alone, with a reason a human can
+// read off the toast.
+type PreloadSkip struct {
+	Service string `json:"service"`
+	Reason  string `json:"reason"`
+}
+
+// PreloadAll is the inverse of UnloadAll: get every parkable backend into
+// system RAM ahead of time, so the first real job of the day pays a 2–5s unpark
+// instead of a 10–60s cold start. For each stopped backend with evict = "park",
+// largest pinned cost first (the transient room only shrinks as park taxes pile
+// up, so the big ones go while there's space): cold-start it onto the card, then
+// immediately park it.
+//
+// The one rule: it never STOPS anything. If the card is too full to cold-start
+// the next candidate, it may park idle pinned residents to make room (that's
+// where they'd end up anyway), but a backend that's leased, or whose policy is
+// stop, stays exactly where it is and the candidate is skipped instead.
+//
+// Each candidate is its own swap-slot hold, so real jobs can slip in between
+// steps. That's deliberate: simplest thing that works, and a job grabbing a
+// freshly warmed backend is a feature, not a race.
+func (a *Arbiter) PreloadAll(ctx context.Context) (PreloadResult, error) {
+	var res PreloadResult
+
+	// Candidates, in a deterministic order: parkable, biggest first, then by name.
+	var cands []string
+	for name, svc := range a.cfg.Services {
+		if svc.Evict == config.EvictPark {
+			cands = append(cands, name)
+		} else {
+			res.Skipped = append(res.Skipped, PreloadSkip{name, "evict policy is stop, not parkable"})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		pi, pj := a.vramPinned(cands[i]), a.vramPinned(cands[j])
+		if pi != pj {
+			return pi > pj
+		}
+		return cands[i] < cands[j]
+	})
+
+	var firstErr error
+	for _, name := range cands {
+		err := a.operate(ctx, func() (func() error, error) {
+			if st := a.states[name]; st != nil && st.res != resStopped {
+				res.Skipped = append(res.Skipped, PreloadSkip{name, "already " + st.res.String()})
+				return nil, nil
+			}
+			victims, ok := a.preloadPlanLocked(name)
+			if !ok {
+				res.Skipped = append(res.Skipped, PreloadSkip{name, "no room on the card without stopping something"})
+				return nil, nil
+			}
+			if reason := a.ramCheckLocked(name); reason != "" {
+				res.Skipped = append(res.Skipped, PreloadSkip{name, reason})
+				return nil, nil
+			}
+			return func() error {
+				defer a.clearPhases(append(append([]string{}, victims...), name)...)
+				for _, v := range victims {
+					a.setPhase(v, "parking (making room to preload)")
+					if err := a.parkBackend(ctx, v); err != nil {
+						return fmt.Errorf("parking %s to make room: %w", v, err)
+					}
+				}
+				if err := a.promote(ctx, name); err != nil {
+					return fmt.Errorf("cold-starting %s: %w", name, err)
+				}
+				a.setPhase(name, "parking (preload done, weights -> RAM)")
+				if err := a.parkBackend(ctx, name); err != nil {
+					return fmt.Errorf("parking %s after preload: %w", name, err)
+				}
+				res.Preloaded = append(res.Preloaded, name)
+				return nil
+			}, nil
+		})
+		if err != nil {
+			log.Printf("[arbiter] preload-all: %s: %v", name, err)
+			res.Skipped = append(res.Skipped, PreloadSkip{name, err.Error()})
+			if firstErr == nil {
+				firstErr = err
+			}
+			if ctx.Err() != nil {
+				break // the caller's gone; don't keep grinding through the list
+			}
+		}
+	}
+	sort.Slice(res.Skipped, func(i, j int) bool { return res.Skipped[i].Service < res.Skipped[j].Service })
+	return res, firstErr
+}
+
+// preloadPlanLocked is planLocked's gentler sibling: can `target` be cold-started
+// onto the card RIGHT NOW without stopping anything? Returns the idle pinned
+// park-policy residents (LRU first) that must be parked to make room — possibly
+// none — or (nil, false) if even parking all of them isn't enough. Stop-policy
+// and leased residents are never touched; that's the whole point of the caller.
+func (a *Arbiter) preloadPlanLocked(target string) ([]string, bool) {
+	budgeted := a.cfg.GPU.VRAMBudgetMB > 0
+	capped := a.cfg.GPU.MaxResident > 0
+
+	committed, pinnedCount := 0, 0
+	for name, st := range a.states {
+		switch st.res {
+		case resPinned:
+			committed += a.vramPinned(name)
+			pinnedCount++
+		case resParked:
+			committed += a.vramParked(name)
+		}
+	}
+	proj := committed + a.vramPinned(target)
+	count := pinnedCount + 1
+	fits := func() bool {
+		return !(budgeted && proj > a.cfg.GPU.VRAMBudgetMB) && !(capped && count > a.cfg.GPU.MaxResident)
+	}
+	if fits() {
+		return nil, true
+	}
+
+	type cand struct {
+		name string
+		used time.Time
+	}
+	var cands []cand
+	for name, st := range a.states {
+		if st.res == resPinned && st.leases == 0 && name != target &&
+			a.cfg.Services[name].Evict == config.EvictPark {
+			cands = append(cands, cand{name, st.lastUsed})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].used.Before(cands[j].used) })
+
+	var victims []string
+	for _, c := range cands {
+		proj -= a.vramPinned(c.name) - a.vramParked(c.name)
+		count--
+		victims = append(victims, c.name)
+		if fits() {
+			return victims, true
+		}
+	}
+	return nil, false
+}
+
+// ramCheckLocked guards the peasant box: parking N models means N sets of
+// weights in system RAM. If memory.ram_budget_mb is set, the sum of every alive
+// (pinned or parked) backend's ram_reserve_mb plus the candidate's must fit.
+// Returns "" when fine, else a reason. This is the first place the RAM budget
+// actually bites — the job path doesn't check it (yet), because lazy eviction
+// only ever parks one thing at a time; preload is what stacks them up.
+func (a *Arbiter) ramCheckLocked(target string) string {
+	budget := a.cfg.Memory.RAMBudgetMB
+	if budget <= 0 {
+		return ""
+	}
+	used := 0
+	for name, st := range a.states {
+		if st.res != resStopped {
+			used += a.cfg.Services[name].RAMReserveMB
+		}
+	}
+	need := a.cfg.Services[target].RAMReserveMB
+	if used+need > budget {
+		return fmt.Sprintf("would exceed memory.ram_budget_mb (%d + %d > %d MB)", used, need, budget)
+	}
+	return ""
 }

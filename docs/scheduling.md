@@ -168,6 +168,34 @@ through the same arbiter (`operator.go`), obeying the same two rules:
   in-flight jobs. An operator cannot yank a model out from under a job. Come
   back when it drains.
 
+### Preload all
+
+`POST /v1/backends/preload-all` (the "Preload all" button) is the inverse of
+unload-all: get every parkable backend into system RAM ahead of time so the
+first request of the day pays an unpark, not a cold start. For each stopped
+backend with `evict = "park"`, largest `vram_pinned_mb` first, it cold-starts
+the backend onto the card and immediately parks it. Biggest first because the
+transient room only shrinks as park taxes accumulate.
+
+Rules:
+
+- It **never stops anything.** If the card is too full to cold-start the next
+  candidate it may park idle pinned residents to make room, since parked is
+  where they would end up anyway. A leased resident, or one with
+  `evict = "stop"`, is never touched, and the candidate is skipped with a
+  reason instead.
+- It checks `memory.ram_budget_mb` against the sum of every alive backend's
+  `ram_reserve_mb`. This is currently the **only** place the RAM budget is
+  enforced. The job path does not check it, because lazy eviction parks one
+  thing at a time. Preload is what stacks parked models up, so it is where the
+  peasant box needs protecting.
+- Each candidate is its own swap-slot hold, so real jobs can run between
+  steps. If a job grabs a freshly warmed backend before the park, the park is
+  refused and that backend is reported skipped. Harmless.
+- The call is slow: N cold starts back to back. The response body lists
+  `preloaded` and `skipped` with reasons. The cards show each backend's phase
+  meanwhile.
+
 ## Known gaps (as of 2026-09-19)
 
 These are real behaviours of the current code, not hypotheticals. Recorded

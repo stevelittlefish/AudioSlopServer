@@ -467,6 +467,11 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
 
 ### Backends & orchestration
 
+- [x] **Preload all** — DONE (2026-09-19). `POST /v1/backends/preload-all` +
+      admin button: cold-start and park every parkable backend that fits,
+      biggest first, never stopping anything. Also the first place
+      `memory.ram_budget_mb` is enforced. See docs/scheduling.md.
+
 - [ ] **Arbiter fairness: a busy backend can starve a waiter forever.** The
       pinned fast path hands out leases without checking whether another
       service is waiting to evict, so a steady stream of ACE-Step jobs keeps

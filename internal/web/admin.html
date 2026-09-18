@@ -240,6 +240,7 @@
     <div class="counts" id="counts"></div>
     <span class="spacer"></span>
     <button class="ghost" id="refresh">↻ Refresh</button>
+    <button id="preloadall" title="Cold-start every parkable backend and park it, so nothing has to cold-start later">☁ Preload all</button>
     <button class="danger" id="unloadall">⏻ Unload all</button>
   </div>
   <div class="grid" id="grid"></div>
@@ -546,6 +547,33 @@ async function act(service, action) {
   }
 }
 
+// Preload all: N cold starts back to back, so this can take minutes. The
+// backends' phase notes keep the cards alive-looking via the regular poll
+// while we wait for the body.
+async function preloadAll() {
+  if (inFlight) return;
+  inFlight = true;
+  document.querySelectorAll("button").forEach(b => b.disabled = true);
+  toast("Preloading… each backend cold-starts, then parks. This takes a while.");
+  try {
+    const r = await fetch("/v1/backends/preload-all", { method:"POST" });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
+    const pre = (body.preloaded||[]), sk = (body.skipped||[]);
+    let msg = pre.length
+      ? `Preloaded ${pre.join(", ")} into RAM`
+      : "Nothing to preload";
+    const noRoom = sk.filter(s => /no room|ram_budget/.test(s.reason));
+    if (noRoom.length) msg += ` · no room for ${noRoom.map(s => s.service).join(", ")}`;
+    toast(msg);
+  } catch (e) {
+    toast("Preload all failed: " + e.message, true);
+  } finally {
+    inFlight = false;
+    await refresh();
+  }
+}
+
 async function unloadAll() {
   if (inFlight) return;
   inFlight = true;
@@ -581,6 +609,7 @@ function loop() {
 
 $("#refresh").onclick = refresh;
 $("#unloadall").onclick = unloadAll;
+$("#preloadall").onclick = preloadAll;
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 loop();
 </script>
