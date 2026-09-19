@@ -237,9 +237,10 @@ no_preload = true      # keep it out of "preload all": now that it's parkable th
 vram_pinned_mb = 14000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
                        # reserved spike on a 10-minute track. One language model
                        # resident; long audio can still exceed this reservation.
-vram_parked_mb = 500   # ESTIMATE, UNMEASURED: wav2vec2 is small, but a parked process
-                       # still holds a CUDA context. Confirm on the box (measurements.md);
-                       # falls back to gpu.context_tax_mb if you delete this line.
+vram_parked_mb = 500   # MEASURED: 332 MiB parked on a 3090 (ass-aligner, 2026-09-19 —
+                       # just the CUDA context, weights on CPU). Kept at 500 for headroom
+                       # and to match gpu.context_tax_mb, which this falls back to if
+                       # deleted. See docs/measurements.md.
 ram_reserve_mb = 6000  # ESTIMATE, UNMEASURED: model, decoded audio, alignment scratch
 idle_ttl = "0"
 shm_size_mb = 2048

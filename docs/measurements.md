@@ -197,15 +197,21 @@ stuck at the long-song peak between jobs). Only the resident wav2vec2 weights
 stay on the card once a job completes, so a long track no longer taxes the
 co-tenants after it finishes — only while it's actually aligning.
 
-**Parked cost still has to be measured — and that needs the park build deployed
-first.** Until the park-capable forced-aligner image is released and running on
-`ai.lemon.com`, there is nothing to `nvidia-smi`: a stopped backend parks nothing.
-So the aligner's `vram_parked_mb` stays an **estimate (500 MiB)** in `ass.toml`,
-and the measurement is blocked on the deploy, not on us. The parked tax should be
-small and length-independent (a parked process holds only the CUDA context, not the
-job's activations — same story as the generators above), but confirm it once the
-image is on the box. Chase it via the per-process `nvidia-smi` across an
-unpark→park cycle, exactly as the four backends above were measured.
+**Parked cost is now measured: 332 MiB (2026-09-19).** With the park-capable
+forced-aligner image deployed, per-process `nvidia-smi` on the fully-parked stack
+shows `ass-aligner` (PID mapped to its own `/usr/bin/python` process — the only ASS
+backend not on a venv/pyenv, so it's easy to spot) holding **332 MiB on a 3090**.
+That's the CUDA context only, length-independent, weights on CPU RAM — exactly the
+"small and fixed" shape the generators showed, confirming the parked tax has nothing
+to do with the length-scaling inference peak above. The `vram_parked_mb = 500`
+figure in `ass.toml` stays put: it's safely conservative and matches
+`gpu.context_tax_mb`, so no reason to shave 168 MiB for its own sake.
+
+For reference, the whole ASS stack parked on GPU 0 was ~1.46 GB across five
+backends (256–332 MiB each). Note a **non-ASS co-tenant** shared the card at the
+time: `wyoming-whisper` held ~2.1 GB on GPU 0. ASS can't see or evict that, so it
+does not count against `vram_budget_mb` automatically — leave headroom, or move
+such tenants off the ASS card.
 
 ### Lazy VRAM load (nvtop-confirmed) — FIXED for demucs (2026-09-18)
 

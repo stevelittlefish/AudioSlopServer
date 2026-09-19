@@ -41,11 +41,12 @@ splits the difference: comfortable for typical songs, short of the longest. If
 long tracks become routine, raise it (and accept the waste), chunk the audio in
 the backend, or reject over-length input rather than OOM mid-align.
 
-**Parked usage can't be measured until this image is deployed.** A stopped backend
-parks nothing, so the `vram_parked_mb = 500` estimate stays a guess until the
-park-capable image is released and running on the box — then confirm it via
-per-process `nvidia-smi` across an unpark→park cycle. The measurement is gated on
-the deploy, not on more code.
+**Parked usage is now measured: ~332 MiB.** With the park-capable image deployed,
+per-process `nvidia-smi` shows the parked `ass-aligner` (its own `/usr/bin/python`
+process) holding **332 MiB on a 3090** — pure CUDA context, the wav2vec2 weights
+sitting on CPU RAM. That confirms the old `vram_parked_mb = 500` guess as safely
+conservative; the value stays 500 for headroom and to match `gpu.context_tax_mb`,
+which it falls back to. (Measured 2026-09-19; see [measurements.md](measurements.md).)
 
 The fork implements `/park` + `/unpark` (move the wav2vec2 model to CPU RAM and
 back), so ASS uses `evict = "park"`: a swap costs a PCIe copy, not a container
