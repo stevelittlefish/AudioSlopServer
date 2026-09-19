@@ -525,6 +525,12 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       server; **confirm the parked context tax** (est. 500 MiB) and pinned/RAM
       budgets on short/long tracks and language swaps. Runbook: `docs/aligner.md`;
       backend source: `child_services/forced-aligner`.
+- [x] Per-service `disabled` flag. `disabled = true` drops a service from ASS
+      entirely (validate() deletes it from the map before anything else sees it,
+      recording it in `DisabledServices` for a startup log line) and skips its
+      image in `pull-services.sh`. The pull script now gets its image list from
+      `ass -print-images` (the same config.Load the server runs) instead of
+      hand-parsing TOML — single source of truth, disabled honored for free.
 - [ ] Onboard remaining backend (Whisper)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only

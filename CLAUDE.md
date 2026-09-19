@@ -378,6 +378,8 @@ context_tax_mb = 500      # VRAM a parked (alive) process holds even with weight
                           # on the CPU. Charged per parked backend against the budget.
 
 [services.demucs]
+disabled = false          # true = service is completely absent: not registered, not
+                          # started, hidden from the API/console, image not pulled.
 image = "stem-separation:local"
 port  = 5336
 verb  = "separate"

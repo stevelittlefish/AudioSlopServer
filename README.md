@@ -175,6 +175,7 @@ worked examples. The full option surface:
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
+| `disabled` | bool | `false` | Remove this service from ASS entirely: not registered, not startable, absent from `/v1/backends` and the web console, and skipped by `pull-services.sh`. Its other fields aren't validated, so a disabled block may be incomplete. |
 | `image` | string | *(required)* | Docker image to run. Local (`stem-separation:local`) or a registry ref (`ghcr.io/.../stem-separator:latest`). ASS never auto-pulls — the image must be present locally. |
 | `port` | int | *(required)* | Container port, **published to the same host port**, and injected into the container as `PORT`. |
 | `verb` | string | — | Job verb (`separate`, `generate`, …); injected as `VERB`. Forms the backend URL `/v1/<verb>`. |

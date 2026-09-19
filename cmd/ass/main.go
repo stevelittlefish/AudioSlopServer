@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/stevelittlefish/AudioSlopServer/internal/api"
@@ -26,9 +28,26 @@ func main() {
 	// The one flag we allow. Everything else lives in TOML, as the treatise
 	// commands (rule 4).
 	configPath := flag.String("config", "ass.toml", "path to the TOML config file")
+	printImages := flag.Bool("print-images", false,
+		"print each enabled service's Docker image (one per line) and exit; used by pull-services.sh")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags)
+
+	// Utility mode: emit the image list and get out, no banner, no server. This is
+	// the single source of truth for "which images does this config need" — same
+	// config.Load as the server, so disabled services drop out for free. Keeps
+	// pull-services.sh from hand-parsing TOML.
+	if *printImages {
+		cfg, err := config.Load(*configPath)
+		if err != nil {
+			log.Fatalf("config: %v", err)
+		}
+		for _, name := range sortedServiceNames(cfg) {
+			fmt.Println(cfg.Services[name].Image)
+		}
+		return
+	}
 
 	// First things first. Non-negotiable objective #1.
 	banner.Print(os.Stdout)
@@ -38,6 +57,9 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 	log.Printf("loaded config from %s: %d service(s)", *configPath, len(cfg.Services))
+	if len(cfg.DisabledServices) > 0 {
+		log.Printf("skipping %d disabled service(s): %v", len(cfg.DisabledServices), cfg.DisabledServices)
+	}
 
 	// Our own state: the job database and the harvested-artifact store.
 	st, err := store.Open(cfg.Storage.DBPath)
@@ -85,4 +107,15 @@ func main() {
 	if err := http.ListenAndServe(cfg.Server.Addr, handler); err != nil {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+// sortedServiceNames returns the enabled service names in a stable order, so
+// -print-images emits the same list every run (maps iterate randomly in Go).
+func sortedServiceNames(cfg *config.Config) []string {
+	names := make([]string, 0, len(cfg.Services))
+	for name := range cfg.Services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
