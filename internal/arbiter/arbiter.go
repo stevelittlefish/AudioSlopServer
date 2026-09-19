@@ -267,21 +267,29 @@ func (a *Arbiter) planLocked(target string) ([]string, bool) {
 		return nil, true
 	}
 
-	// Doesn't fit: evict LRU-first among the pinned backends with no active lease
-	// (and never the target itself). Each eviction frees its pinned cost, minus
-	// whatever it retains parked (a stop victim retains nothing; a park victim
-	// keeps its context tax on the card).
+	// Doesn't fit: evict the cheapest victims first among the pinned backends with
+	// no active lease (and never the target itself). "Cheapest" = lowest configured
+	// priority, ties broken LRU. Each eviction frees its pinned cost, minus whatever
+	// it retains parked (a stop victim retains nothing; a park victim keeps its
+	// context tax on the card).
 	type cand struct {
-		name string
-		used time.Time
+		name     string
+		priority int
+		used     time.Time
 	}
 	var cands []cand
 	for name, st := range a.states {
 		if st.res == resPinned && st.leases == 0 && name != target {
-			cands = append(cands, cand{name, st.lastUsed})
+			cands = append(cands, cand{name, a.cfg.Services[name].Priority, st.lastUsed})
 		}
 	}
-	sort.Slice(cands, func(i, j int) bool { return cands[i].used.Before(cands[j].used) })
+	// Lowest priority dies first; among equals, least-recently-used dies first.
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].priority != cands[j].priority {
+			return cands[i].priority < cands[j].priority
+		}
+		return cands[i].used.Before(cands[j].used)
+	})
 
 	var victims []string
 	for _, c := range cands {

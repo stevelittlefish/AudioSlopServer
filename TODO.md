@@ -528,6 +528,12 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       16GB box `ai2.lemon.com`): ~0.39GB VRAM baseline with everything off;
       demucs `htdemucs_ft` ~0.5GB resident, ~1.6GB peak. Demucs is small. Still
       need: measure the real parked context tax, and other models.
+- [x] **Eviction priority knob.** Per-service `priority` int (higher = evicted
+      last). Victim = lowest-priority zero-lease resident, ties broken LRU; all
+      equal (default 0) = plain LRU, so nothing changes unless you set it. Wired
+      into `planLocked`, documented in `docs/scheduling.md` ("Eviction priority"),
+      README config table, CLAUDE.md, and seeded into both TOMLs. A *bias*, not a
+      pin — a hard "never auto-evict" is still the sticky-flag idea below.
 - [ ] **Smarter eviction than "evict on count."** The strong case: a small
       service (tiny VRAM footprint) shouldn't be evicted at all just because a
       different model wants the card — it can ride along. Once eviction is

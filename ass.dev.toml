@@ -21,6 +21,7 @@ image = "ass-mockbackend:local"
 port  = 5336
 verb  = "separate"        # mock returns vocals.wav + no_vocals.wav
 evict = "park"
+priority = 60             # keep demucs hot over the generators (higher = evicted last)
 env   = { JOB_MS = "300" }
 
 [services.yue]
@@ -28,6 +29,7 @@ image = "ass-mockbackend:local"
 port  = 5340
 verb  = "generate"        # mock returns audio.flac + score.abc
 evict = "stop"
+priority = 20             # lowest: the heavy generator, evicted first
 env   = { JOB_MS = "300" }
 
 [services.aligner]
@@ -35,4 +37,5 @@ image = "ass-mockbackend:local"
 port = 8830
 verb = "align"           # mock returns alignment.json, including unresolved words
 evict = "stop"
+priority = 40            # a utility step: outlives the generator, below always-on demucs
 env = { JOB_MS = "300" }

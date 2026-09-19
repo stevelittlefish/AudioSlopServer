@@ -107,6 +107,13 @@ type Service struct {
 	RAMReserveMB int               `toml:"ram_reserve_mb"`
 	IdleTTL      Duration          `toml:"idle_ttl"` // 0 = never reclaim parked RAM
 
+	// Priority biases which resident gets evicted first when the card is full.
+	// HIGHER = more valuable = evicted LAST. The arbiter evicts the lowest
+	// priority zero-lease resident, breaking ties by least-recently-used. Leave
+	// everything equal (the default) and you get pure LRU, the old behaviour.
+	// Bump one service up and it survives swaps until nothing cheaper is resident.
+	Priority int `toml:"priority"`
+
 	// VRAMPinnedMB is what this service holds on the card while it's pinned. Use
 	// the MEASURED PEAK (the "max" from scripts/measure-vram.sh), not the idle
 	// floor — the budget has to survive the worst moment of concurrent inference,

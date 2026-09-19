@@ -229,8 +229,11 @@ cooling the hot model on a timer (Ollama's model) buys nothing and costs a
 reload every time we idle past the timeout. So:
 
 - **VRAM eviction is lazy.** Keep the resident model `pinned` until a *different*
-  model actually needs the card, then evict the least-recently-used resident to
-  make room. **Never on a clock.** LRU picks the victim.
+  model actually needs the card, then evict a resident to make room. **Never on a
+  clock.** The victim is the **lowest-`priority`** zero-lease resident, ties
+  broken **least-recently-used** — so with everyone at the default priority it's
+  plain LRU, and bumping a service's `priority` keeps it hot over cheaper ones.
+  See `docs/scheduling.md` ("Eviction priority") for the full rule.
 - **`idle_ttl` is repurposed to reclaim RAM, not VRAM.** It governs only the
   deeper `parked → stopped` demotion — handing *system RAM* back to the OS. Off
   by default (the big server keeps things parked forever); set it on constrained
@@ -378,6 +381,8 @@ port  = 5336
 verb  = "separate"
 evict = "park"            # park | stop — how ASS frees the GPU (VRAM eviction is
                           # lazy either way; this only picks the demotion target)
+priority = 50             # higher = evicted LAST. Victim = lowest-priority zero-lease
+                          # resident, ties broken LRU. Default 0 (all equal) = plain LRU.
 ram_reserve_mb = 1000     # cost of keeping this parked in system RAM, for budgeting
 idle_ttl = "0"            # 0 = never reclaim parked RAM. Peasant sets e.g. "10m"
                           # to demote parked -> stopped and hand RAM back.

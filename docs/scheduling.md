@@ -67,11 +67,12 @@ lease is released the same way.
 3. **Plan.** Call `planLocked(service)`:
    - If the target fits in the budget alongside whatever is resident, the plan
      is "no victims, go".
-   - Otherwise, walk the **pinned backends with zero leases**, least recently
-     used first, subtracting each one's freed VRAM (its pinned cost minus what
-     it retains parked, if its `evict` policy is `park`) until the target
-     fits. Those become the victims, in that order. One eviction is often not
-     enough under a budget, so this can name several.
+   - Otherwise, walk the **pinned backends with zero leases**, cheapest first
+     (**lowest `priority` first, ties broken least-recently-used**), subtracting
+     each one's freed VRAM (its pinned cost minus what it retains parked, if its
+     `evict` policy is `park`) until the target fits. Those become the victims,
+     in that order. One eviction is often not enough under a budget, so this can
+     name several.
    - If the walk runs out of evictable backends before the target fits, the
      plan is "wait". Every resident that could make room is busy.
 4. **Wait, if the plan said wait.** Block on the condition variable. Wake-ups
@@ -155,6 +156,49 @@ other. It evicts the LRU zero-lease residents **only as far as needed**.
 Parked backends still cost their context tax. A card with three parked
 backends has that many hundred MB fewer to give to the next pinned model, which
 is why `vram_parked_mb` is measured per service, not guessed.
+
+## Eviction priority: who dies first
+
+By default the arbiter picks its victim by **LRU** — the least-recently-used
+zero-lease resident is evicted to make room. That's fine until you have a
+backend you'd rather keep hot (a Whisper that everything else depends on) and a
+backend you're happy to throw off the card the moment anyone else wants it (a
+YuE generation nobody's waiting on). LRU can't tell them apart; `priority` can.
+
+Each `[services.*]` block takes one optional integer:
+
+```toml
+[services.whisper]
+priority = 100     # higher = more valuable = evicted LAST
+
+[services.yue]
+priority = 10      # low = cheap/rare = evicted FIRST
+```
+
+The rule is one line: **evict the lowest-priority zero-lease resident; break
+ties by least-recently-used.** So priority is the primary sort key and recency
+is the tiebreak. Two consequences fall out of that single number:
+
+- **Leave everything at the default (`0`) and you get pure LRU** — the old
+  behaviour, unchanged. Priority only does something once two services differ.
+- **Bump one service up and it becomes sticky** — it survives swaps until
+  nothing lower-priority is resident to evict instead. Only when the high-value
+  backend is the *only* zero-lease resident left does it get evicted.
+
+What priority is **not**:
+
+- **Not a pin.** A high priority still loses the card if it's the only thing
+  that can free enough VRAM. If you need "never auto-evict while a request could
+  use it", that's a starvation lever (see *Known gaps*), not this knob.
+- **Not restore cost.** Whether a victim is cheap or expensive to bring back is
+  already expressed by `evict = park|stop` and the residency state machine.
+  Priority is about *value to keep hot*, deliberately kept separate so the
+  victim choice stays a thing you can read straight off the config: look at the
+  priorities and the last-used column and you know exactly who dies next.
+
+Priority never overrides a lease. **A leased backend is never a candidate**,
+whatever its priority — the lease rule wins, always. Priority only orders the
+backends that were already evictable.
 
 ## Operator actions
 

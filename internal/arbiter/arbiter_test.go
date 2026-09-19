@@ -255,3 +255,44 @@ func TestSamePinnedIsFast(t *testing.T) {
 		t.Fatalf("demucs leases = %d after release, want 0", l)
 	}
 }
+
+// TestPriorityBeatsLRU proves the priority knob overrides recency: the
+// lowest-priority resident is evicted even when it's the most recently used, so
+// a high-priority backend survives a swap that plain LRU would have thrown it to.
+func TestPriorityBeatsLRU(t *testing.T) {
+	sup := newFakeSup(t, "lo", "hi", "big")
+	cfg := &config.Config{
+		GPU: config.GPU{VRAMBudgetMB: 9000},
+		Services: map[string]config.Service{
+			// lo and hi both fit together (6000 <= 9000). big needs one gone.
+			"lo":  {Image: "x", Port: 1, Evict: config.EvictStop, VRAMPinnedMB: 3000, Priority: 1},
+			"hi":  {Image: "x", Port: 2, Evict: config.EvictStop, VRAMPinnedMB: 3000, Priority: 10},
+			"big": {Image: "x", Port: 3, Evict: config.EvictStop, VRAMPinnedMB: 6000},
+		},
+	}
+	a := New(sup, cfg)
+	ctx := context.Background()
+
+	// Acquire hi first, then lo — so hi is the LEAST recently used. Pure LRU would
+	// pick hi as the victim; priority must pick lo (the low-priority one) instead.
+	r1, _ := a.Acquire(ctx, "hi")
+	r1()
+	r2, _ := a.Acquire(ctx, "lo")
+	r2()
+
+	r3, err := a.Acquire(ctx, "big")
+	if err != nil {
+		t.Fatalf("acquire big: %v", err)
+	}
+	snap := a.Snapshot()
+	if snap["big"].Residency != "pinned" {
+		t.Fatalf("big residency = %q, want pinned", snap["big"].Residency)
+	}
+	if snap["lo"].Residency != "stopped" {
+		t.Fatalf("lo residency = %q, want stopped (lowest priority evicted first)", snap["lo"].Residency)
+	}
+	if snap["hi"].Residency != "pinned" {
+		t.Fatalf("hi residency = %q, want pinned (high priority survives despite being LRU)", snap["hi"].Residency)
+	}
+	r3()
+}
