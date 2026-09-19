@@ -229,7 +229,9 @@ verb = "align"
 evict = "stop"         # no park/unpark; ASS harvests JSON before removing container
 priority = 10          # very low: a quick utility step, happy to be thrown off the
                        # card the moment anything else wants it. Evicted first of all.
-vram_pinned_mb = 12000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
+no_preload = true      # keep it out of "preload all" (mostly moot for a stop service,
+                       # which has no park state to warm into — set for intent/clarity).
+vram_pinned_mb = 14000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
                        # reserved spike on a 10-minute track. One language model
                        # resident; long audio can still exceed this reservation.
 ram_reserve_mb = 6000  # ESTIMATE, UNMEASURED: model, decoded audio, alignment scratch
