@@ -187,6 +187,16 @@ the waste, chunk long audio in the backend, or fail-fast over a length threshold
 rather than OOM mid-align. Recorded here so nobody "fixes" the reservation to the
 max and wonders why the card is always full.
 
+**That spike is transient — the aligner frees it after every job.** The peak
+above is the *inference* peak, not steady state: `align()`'s `finally` drops the
+audio/alignment tensors and calls `empty_cache()`, and the image sets
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` so the fragmented multi-GB
+reserved pool is actually returned to the driver instead of sitting there until
+the next song reuses it (which is what an earlier build did — the card looked
+stuck at the long-song peak between jobs). Only the resident wav2vec2 weights
+stay on the card once a job completes, so a long track no longer taxes the
+co-tenants after it finishes — only while it's actually aligning.
+
 **Parked cost still has to be measured — and that needs the park build deployed
 first.** Until the park-capable forced-aligner image is released and running on
 `ai.lemon.com`, there is nothing to `nvidia-smi`: a stopped backend parks nothing.
