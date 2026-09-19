@@ -100,6 +100,18 @@
   .badge .dot { width:9px; height:9px; border-radius:50%; background:var(--state-c); box-shadow:0 0 10px var(--state-c); }
   .card[data-res="stopped"] .badge .dot { box-shadow:none; }
 
+  /* Over-budget: this backend's own vram_pinned_mb is bigger than the whole GPU
+     budget, so it can't be guaranteed to fit. ASS loads it anyway (evict-all +
+     hope), so it's a warning, not an error — amber, not red. */
+  .warn {
+    display:flex; align-items:flex-start; gap:8px; margin:-4px 0 14px;
+    padding:9px 11px; border-radius:10px;
+    background:rgba(242,193,78,.09); border:1px solid rgba(242,193,78,.32);
+    color:var(--parked); font-size:12px; line-height:1.45;
+  }
+  .warn .warn-ico { flex:none; font-size:13px; line-height:1.2; }
+  .card[data-overbudget="1"] { border-color:rgba(242,193,78,.4); }
+
   /* Working: a swap is touching this backend right now. Blue, animated, and it
      shows what the engine is actually doing + how long it's been at it, so a
      long cold start reads as "alive and grinding", not "frozen". */
@@ -367,6 +379,10 @@ function card(b) {
       <a class="testlink" title="Open the test page">test ▸</a>
       <span class="badge"><span class="dot"></span><span class="rtext"></span></span>
     </div>
+    <div class="warn" hidden>
+      <span class="warn-ico">⚠</span>
+      <span class="warn-txt"></span>
+    </div>
     <div class="phase">
       <span class="spin"></span><span class="ptext"></span>
       <span class="elapsed" data-since=""></span>
@@ -399,6 +415,15 @@ function card(b) {
   if (active) {
     el.querySelector(".atext").textContent =
       `serving ${b.leases} job${b.leases === 1 ? "" : "s"}`;
+  }
+  if (b.over_budget) {
+    el.dataset.overbudget = "1";
+    const warn = el.querySelector(".warn");
+    warn.hidden = false;
+    warn.querySelector(".warn-txt").textContent =
+      `won't fit VRAM budget: reserves ${b.vram_pinned_mb} MiB. ASS loads it anyway ` +
+      `(evicting everything) — a heavy job may OOM the card.`;
+    warn.title = "vram_pinned_mb exceeds gpu.vram_budget_mb";
   }
   el.querySelector(".img").textContent = shortImage(b.image);
   el.querySelector(".img").title = b.image || "";

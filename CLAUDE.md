@@ -240,6 +240,13 @@ reload every time we idle past the timeout. So:
   deeper `parked → stopped` demotion — handing *system RAM* back to the OS. Off
   by default (the big server keeps things parked forever); set it on constrained
   boxes where a parked process holding RAM indefinitely is rude.
+- **Oversized services load anyway.** `vram_pinned_mb` is a worst-case ceiling, so
+  a service whose reservation exceeds the whole `vram_budget_mb` (a big generator
+  that only *sometimes* peaks over the card) isn't refused — ASS evicts everything
+  and loads it over budget, warning in the log, on `/v1/backends` (`over_budget`),
+  and in the console. It won't stack it on a *running* job, though: that waits.
+
+
 
 ### VRAM: fragmentation and the park context-tax
 

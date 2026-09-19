@@ -531,6 +531,13 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       image in `pull-services.sh`. The pull script now gets its image list from
       `ass -print-images` (the same config.Load the server runs) instead of
       hand-parsing TOML — single source of truth, disabled honored for free.
+- [x] Oversized-service escape hatch. When a service's `vram_pinned_mb` exceeds
+      the whole `gpu.vram_budget_mb`, the arbiter no longer waits forever (which
+      timed the job out at 30m) — it evicts every zero-lease resident and loads it
+      anyway, over budget, since the reservation is a worst-case ceiling. Warns in
+      three places: startup log, arbiter runtime log, and `over_budget` on
+      `/v1/backends` → amber banner in the admin console. Still refuses to stack on
+      a *running* (leased) job. Tests in `arbiter_test.go`.
 - [ ] Onboard remaining backend (Whisper)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only

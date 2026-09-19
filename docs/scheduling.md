@@ -74,7 +74,17 @@ lease is released the same way.
      in that order. One eviction is often not enough under a budget, so this can
      name several.
    - If the walk runs out of evictable backends before the target fits, the
-     plan is "wait". Every resident that could make room is busy.
+     plan is normally "wait" — every resident that could make room is busy.
+     **Exception: an oversized target.** If the target's own `vram_pinned_mb` is
+     bigger than the whole `vram_budget_mb`, no eviction can ever satisfy the
+     budget, so waiting is just a slow timeout. Instead ASS evicts every
+     zero-lease resident and **loads it anyway, over budget, with a warning**
+     (logged, and surfaced as `over_budget` on `/v1/backends` + an amber banner
+     in the console). The reservation is a worst-case ceiling — a service that
+     *usually* fits (a short ACE-Step song) shouldn't be un-runnable because its
+     rare peak nudges over the card. The one thing this won't do is stack the
+     oversized target on top of a **running** (leased) job: that's a guaranteed
+     OOM, not a hopeful one, so it still waits for the lease to drain first.
 4. **Wait, if the plan said wait.** Block on the condition variable. Wake-ups
    come from any `release()` and from the end of any swap.
 5. **Swap.** Set `swapping = true`, **drop the lock**, and do the slow work:

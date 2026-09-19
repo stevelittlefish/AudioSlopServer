@@ -101,6 +101,11 @@ func main() {
 
 	for name, svc := range cfg.Services {
 		log.Printf("  service %-12s image=%s port=%d verb=%s evict=%s", name, svc.Image, svc.Port, svc.Verb, svc.Evict)
+		if cfg.GPU.VRAMBudgetMB > 0 && svc.VRAMPinnedMB > cfg.GPU.VRAMBudgetMB {
+			log.Printf("  WARNING: %s reserves %d MiB > gpu.vram_budget_mb %d — it can't be budgeted to fit; "+
+				"ASS will evict everything and load it anyway, but a heavy job may OOM the card",
+				name, svc.VRAMPinnedMB, cfg.GPU.VRAMBudgetMB)
+		}
 	}
 
 	log.Printf("ASS listening on %s — bring me your slop", cfg.Server.Addr)

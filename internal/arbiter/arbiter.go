@@ -304,7 +304,37 @@ func (a *Arbiter) planLocked(target string) ([]string, bool) {
 			return victims, true
 		}
 	}
+
+	// Ran out of evictable backends and still over budget. Normally that means
+	// "wait — something busy is holding the card." But if the target's OWN
+	// reservation is bigger than the whole budget, no amount of eviction will ever
+	// make fits() true, so waiting is just a slow road to a timeout. The reservation
+	// is a worst-case ceiling; the service usually needs less (a short ACE-Step song,
+	// say). So evict everything we're allowed to and load it anyway, over budget,
+	// with a warning. The one thing we won't do is stack it on top of a RUNNING job
+	// (a held lease) — that's a guaranteed OOM, not a hopeful one — so if a leased
+	// backend still holds the card we wait for it to drain first.
+	if budgeted && a.vramPinned(target) > a.cfg.GPU.VRAMBudgetMB {
+		if a.leasedPinnedExistsLocked(target) {
+			return nil, false // a running job still holds the card; wait for it
+		}
+		log.Printf("[arbiter] WARNING: %s reserves %d MiB but the GPU budget is only %d MiB — "+
+			"evicting everything and loading it anyway. Fine for light jobs; a heavy one may OOM the card.",
+			target, a.vramPinned(target), a.cfg.GPU.VRAMBudgetMB)
+		return victims, true
+	}
 	return nil, false // full, and everything evictable has been counted: must wait
+}
+
+// leasedPinnedExistsLocked reports whether any backend other than `except` is
+// pinned with an active lease — a running job we're not allowed to evict.
+func (a *Arbiter) leasedPinnedExistsLocked(except string) bool {
+	for name, st := range a.states {
+		if name != except && st.res == resPinned && st.leases > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // swap does the slow part outside the arbiter lock: demote each victim (park or
