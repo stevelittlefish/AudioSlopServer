@@ -22,18 +22,18 @@ be imported by it.
 Adding a repository means editing `pull.sh` alone — put it in `PUBLIC_REPOS` or
 `LAN_REPOS` as appropriate.
 
+Service checkouts live separately in [`../child_services/`](../child_services/README.md).
+Run `./child_services/pull.sh` from the project root to fetch those.
+
 ## The references
 
 | Repo | Where | Why it's here |
 |---|---|---|
 | [SlopBC](ssh://git@seaslug.io:2222/steve/SlopBC.git) | LAN | **The client that talks to this server.** The API contract lives on both sides of this fence, so it's the reference that matters most. |
 | [the_sing_thing](ssh://git@seaslug.io:2222/steve/the_sing_thing.git) | LAN | **Karaoke system** — the consumer of forced-alignment for synced lyrics. |
-| [ACE-Step-1.5-inference-server](https://github.com/stevelittlefish/ACE-Step-1.5-inference-server) | GitHub | **Our server fork** of ACE-Step 1.5 (music generation), renamed from `ACE-Step-1.5`. The one we actually run. |
 | [ACE-Step-1.5 (upstream)](https://github.com/ace-step/ACE-Step-1.5) | GitHub | The OG ACE-Step 1.5 repo — upstream truth, for comparing against our fork. Cloned to `ACE-Step-1.5-upstream` to keep it distinct from the fork's dir. |
-| [forced-aligner](https://github.com/stevelittlefish/forced-aligner) | GitHub | Word-level forced alignment — **for karaoke** (lyrics timing). |
-| [stable-audio-3-docker](https://github.com/stevelittlefish/stable-audio-3-docker) | GitHub | Our dockerised Stable Audio 3 wrapper. **Probably out of date** — trust upstream over it. |
 | [stable-audio-3 (upstream)](https://github.com/Stability-AI/stable-audio-3) | GitHub | The OG Stability-AI Stable Audio 3 repo — upstream truth. |
 | [YuE](https://github.com/multimodal-art-projection/YuE) | GitHub | **YuE 2** — music generation engine. |
-| [stem-separator](https://github.com/stevelittlefish/stem-separator) | GitHub | **DEMUCS server** — source/stem separation. |
+| [llm_proxy](https://github.com/stevelittlefish/llm_proxy) | GitHub | GoReleaser and GitHub Actions build/publishing patterns. |
 
 _More references will be added as we work out what ASS actually needs to do._

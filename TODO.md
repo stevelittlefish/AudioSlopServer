@@ -190,7 +190,7 @@ done.
 
 Onboarding ACE-Step the same way stem-separator and SA3 were conformed. Fork is
 `stevelittlefish/ACE-Step-1.5-inference-server` (renamed from `ACE-Step-1.5`;
-cloned in `references/ACE-Step-1.5-inference-server`). Heavy torch path
+cloned in `child_services/ACE-Step-1.5-inference-server`). Heavy torch path
 tests only on the GPU box.
 
 **Two things make this the biggest conform yet:**

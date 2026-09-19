@@ -71,6 +71,18 @@ deployment detail and the park/unpark validation steps live in
 [docs/deploy.md](docs/deploy.md); every config knob is in
 [Configuration](#configuration).
 
+## Reference checkouts
+
+[`references/`](references/README.md) holds upstream projects, clients, and
+examples. [`child_services/`](child_services/README.md) holds reference checkouts
+of the backend services ASS orchestrates. These external repositories are not
+part of this codebase; all checkout folders are gitignored.
+
+```sh
+./references/pull.sh
+./child_services/pull.sh
+```
+
 ## Best Practices & Guiding Philosophy
 
 We hold ourselves to the highest standards. Here they are.

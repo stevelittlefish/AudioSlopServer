@@ -26,7 +26,7 @@ the push fires that repo's CI, which builds the image and publishes it to GHCR.
 The builds run in CI — you don't need a GPU for them. Bump all three to **v1.1.0**:
 
 ```sh
-cd ~/git/AudioSlopServer/references/ACE-Step-1.5-inference-server
+cd ~/git/AudioSlopServer/child_services/ACE-Step-1.5-inference-server
 ./make_release.sh v1.1.0 "Fast deps-before-source Dockerfile; per-service cache + shared HF_TOKEN_PATH"
 
 cd ~/git/stable-audio-3-docker
