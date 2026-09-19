@@ -3,7 +3,10 @@
 The backend source is maintained separately in
 [stevelittlefish/forced-aligner](https://github.com/stevelittlefish/forced-aligner),
 checked out locally under `child_services/forced-aligner`. Its ASS preparation
-replaces the synchronous `/align` API; clients should use ASS's job API.
+adds the async job API; clients going through ASS should use ASS's job API.
+The backend also provides synchronous `/align` for standalone operation,
+returning timing JSON directly while sharing the same serial worker and limits.
+Use that route only when running independently of ASS's container lifecycle.
 
 ## Deployment
 

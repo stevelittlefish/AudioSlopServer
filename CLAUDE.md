@@ -199,7 +199,8 @@ and serves a job API. That means:
 ### Backend memory state machine
 
 **Forced aligner:** the `aligner` service uses the ASS async job contract and
-returns `alignment.json`. Its old synchronous API is removed. It keeps one
+returns `alignment.json`. Standalone clients can also use synchronous `/align`,
+which shares the serial worker and returns JSON directly. It keeps one
 language model resident and uses **stop eviction** (no park/unpark yet).
 Initial reservations are **12000 MiB VRAM / 6000 MiB RAM**, explicitly estimates
 pending live measurement. Cache paths are private to `/cache/aligner`, using

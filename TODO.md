@@ -505,10 +505,12 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       constant `831001`, so a seedless request rendered the same song byte-for-byte.
       The tester's client-side stopgap can come out once the new image is deployed.
       NB ACE-Step has the same class of trap — see SlopBC's notes.
-- [x] Prepare forced-aligner for ASS: replace synchronous API with serial async
+- [x] Prepare forced-aligner for ASS: add serial async
       jobs, alignment.json harvesting, VRAM telemetry, one-language residency,
       stop eviction, container defaults/cache wiring, release workflow and tests.
       ASS config estimates: 12000 MiB VRAM / 6000 MiB RAM; not live measurements.
+      Synchronous `/align` restored for standalone use, sharing the same worker
+      and limits, returning timing JSON directly with temporary-file cleanup.
 - [ ] Release/build the prepared forced-aligner image and smoke-test on the GPU
       server; measure budgets on short/long tracks and language swaps. Runbook:
       `docs/aligner.md`; backend source: `child_services/forced-aligner`.
