@@ -48,8 +48,9 @@ git clone https://github.com/stevelittlefish/AudioSlopServer.git
 cd AudioSlopServer
 
 sudo mkdir -p /srv/ass/cache /srv/ass/data   # persistent: model cache + job store
+docker compose build                         # build ass:local (also used to list images)
 ./pull-services.sh                           # pull backend images from GHCR
-docker compose up -d --build                 # start ASS on :2645
+docker compose up -d                         # start ASS on :2645
 
 curl -s localhost:2645/health                # {"status":"ok","service":"ASS"}
 ```

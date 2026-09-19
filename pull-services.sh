@@ -16,6 +16,13 @@
 # second, hand-rolled TOML parser to keep in sync). Images with no registry path
 # (a local build tag like "foo:local") are skipped — nothing to pull; build those
 # yourself.
+#
+# We get that list one of two ways, auto-detected (override with ASS_IMAGES_VIA=go
+# or =docker):
+#   - go run ./cmd/ass ...        when a Go toolchain is present (dev boxes)
+#   - docker run ass:local ...    otherwise — the deploy host needs only Docker,
+#                                 not Go (the binary was built inside the image).
+# Build the image first with `docker compose build` (or `docker build`).
 
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
@@ -26,13 +33,44 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
-# Ask ASS which images this config needs. `go run` builds first, so this also
-# fails loudly on a config error (same validation the server runs) before we pull
-# anything. Capture into a variable so we see go run's real exit status — a
-# process substitution would hide it and hand mapfile an empty list instead.
-# Logs go to stderr; only the image list lands on stdout.
-if ! image_list="$(go run ./cmd/ass -config "$CONFIG" -print-images)"; then
-  echo "Could not read images from $CONFIG (config error, or the build failed)." >&2
+ASS_IMAGE="${ASS_IMAGE:-ass:local}"
+
+# print_images_via_go / _docker each emit the enabled services' images on stdout,
+# or fail non-zero on a config/build error. Either way it's the SAME config.Load
+# the server runs, so validation and the disabled filter are identical.
+print_images_via_go() { go run ./cmd/ass -config "$CONFIG" -print-images; }
+print_images_via_docker() {
+  # Mount the config read-only and let the containerised binary read it. Absolute
+  # path required for the bind mount; the entrypoint is `ass`, so the args follow.
+  docker run --rm -v "$(realpath "$CONFIG")":/cfg/config.toml:ro \
+    "$ASS_IMAGE" -config /cfg/config.toml -print-images
+}
+
+# Pick a method. Honour an explicit ASS_IMAGES_VIA; otherwise prefer Go when it's
+# here (dev, always fresh source), and fall back to the container image (deploy).
+method="${ASS_IMAGES_VIA:-}"
+if [ -z "$method" ]; then
+  if command -v go >/dev/null 2>&1; then
+    method=go
+  elif docker image inspect "$ASS_IMAGE" >/dev/null 2>&1; then
+    method=docker
+  else
+    echo "Need a way to read the config: install Go, or build the $ASS_IMAGE" >&2
+    echo "image first (docker compose build). Then re-run." >&2
+    exit 1
+  fi
+fi
+
+# Capture into a variable so the real exit status survives — a process
+# substitution would hide it and hand mapfile an empty list instead.
+case "$method" in
+  go)     image_list="$(print_images_via_go)"     || method_err=1 ;;
+  docker) image_list="$(print_images_via_docker)" || method_err=1 ;;
+  *) echo "ASS_IMAGES_VIA must be 'go' or 'docker', not '$method'" >&2; exit 1 ;;
+esac
+if [ -n "${method_err:-}" ]; then
+  echo "Could not read images from $CONFIG via $method (config error, or the" >&2
+  echo "build/image is missing). For the container path, build $ASS_IMAGE first." >&2
   exit 1
 fi
 mapfile -t IMAGES < <(printf '%s\n' "$image_list" | grep -v '^[[:space:]]*$')
