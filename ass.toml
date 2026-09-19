@@ -226,20 +226,26 @@ volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/yue:/app/outputs"]
 image = "ghcr.io/stevelittlefish/forced-aligner:latest"
 port = 8830
 verb = "align"
-evict = "stop"         # no park/unpark; ASS harvests JSON before removing container
+evict = "park"         # /park + /unpark implemented (model -> CPU RAM and back), so
+                       # a swap costs a PCIe copy, not a container cold start. ASS still
+                       # harvests the JSON before parking. Peasant box: switch to "stop".
 priority = 10          # very low: a quick utility step, happy to be thrown off the
                        # card the moment anything else wants it. Evicted first of all.
-no_preload = true      # keep it out of "preload all" (mostly moot for a stop service,
-                       # which has no park state to warm into — set for intent/clarity).
+no_preload = true      # keep it out of "preload all": now that it's parkable this DOES
+                       # bite — don't warm the aligner into RAM eagerly, it's a big
+                       # reserve and not every session aligns. Cold-starts on first job.
 vram_pinned_mb = 14000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
                        # reserved spike on a 10-minute track. One language model
                        # resident; long audio can still exceed this reservation.
+vram_parked_mb = 500   # ESTIMATE, UNMEASURED: wav2vec2 is small, but a parked process
+                       # still holds a CUDA context. Confirm on the box (measurements.md);
+                       # falls back to gpu.context_tax_mb if you delete this line.
 ram_reserve_mb = 6000  # ESTIMATE, UNMEASURED: model, decoded audio, alignment scratch
 idle_ttl = "0"
 shm_size_mb = 2048
 # Image includes its TOML defaults (CUDA, English preload, port 8830). These env
 # vars configure third-party library caches only. WhisperX's model_dir is set
-# in the baked TOML to /cache/aligner/models. All weights survive stop eviction.
+# in the baked TOML to /cache/aligner/models. Weights survive stop OR park eviction.
 env = { HF_HOME = "/cache/aligner/huggingface", TORCH_HOME = "/cache/aligner/torch", HF_TOKEN_PATH = "/cache/hf-token" }
 volumes = ["/srv/ass/cache:/cache"]
 # No outputs mount: ASS owns the harvested result, container scratch is disposable.

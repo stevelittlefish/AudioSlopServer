@@ -201,9 +201,11 @@ and serves a job API. That means:
 **Forced aligner:** the `aligner` service uses the ASS async job contract and
 returns `alignment.json`. Standalone clients can also use synchronous `/align`,
 which shares the serial worker and returns JSON directly. It keeps one
-language model resident and uses **stop eviction** (no park/unpark yet).
-Initial reservations are **12000 MiB VRAM / 6000 MiB RAM**, explicitly estimates
-pending live measurement. Cache paths are private to `/cache/aligner`, using
+language model resident and uses **park eviction** — the fork implements
+`/park` + `/unpark`, so a swap is a PCIe copy, not a cold start. It's marked
+`no_preload` (skipped by "preload all"; cold-starts on first demand).
+Initial reservations are **14000 MiB VRAM pinned / 6000 MiB RAM / ~500 MiB
+parked**, explicitly estimates pending live measurement. Cache paths are private to `/cache/aligner`, using
 the shared `/cache/hf-token`. Release and migration notes: [docs/aligner.md](docs/aligner.md).
 
 Cheapest-to-restore first. The arbiter's job is to get the target backend to

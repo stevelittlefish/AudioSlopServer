@@ -20,17 +20,23 @@ cd child_services/forced-aligner
 After the container workflow publishes `ghcr.io/stevelittlefish/forced-aligner:latest`,
 run `./pull-services.sh` in the ASS checkout on the GPU host and restart ASS with
 the updated `ass.toml`. Alternatively, build that image tag locally on the host.
-The service is named `aligner`, listens on 8830, and uses stop eviction.
+The service is named `aligner`, listens on 8830, and uses **park eviction**.
 The image contains its default TOML config; no extra host config file is needed.
 
 All weights live under `/srv/ass/cache/aligner` through `/cache`. The shared
 optional token is `/srv/ass/cache/hf-token`. Results are temporary backend files;
-ASS harvests them into its own store before removing the container.
+ASS harvests them into its own store before parking or removing the container.
 
-Initial reservations are **12,000 MiB VRAM and 6,000 MiB RAM**, both estimates.
-Only one language model stays loaded. See [measurement notes](measurements.md)
-for the assumptions and the live checks still needed. There is no park/unpark
-support in this initial integration.
+Initial reservations are **14,000 MiB VRAM pinned and 6,000 MiB RAM**, plus a
+**~500 MiB parked** context-tax estimate, all UNMEASURED. Only one language model
+stays loaded. See [measurement notes](measurements.md) for the assumptions and
+the live checks still needed.
+
+The fork implements `/park` + `/unpark` (move the wav2vec2 model to CPU RAM and
+back), so ASS uses `evict = "park"`: a swap costs a PCIe copy, not a container
+cold start. `no_preload = true` keeps the aligner out of "preload all" — it's a
+sizeable reserve and not every session aligns, so it cold-starts on first demand
+rather than being warmed eagerly. A RAM-tight box can set `evict = "stop"`.
 
 ## Web console and local development
 

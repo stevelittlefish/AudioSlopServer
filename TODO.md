@@ -516,9 +516,15 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       verifies exact multipart forwarding, telemetry, harvest lease protection
       and results after stop. Docker smoke test exercises actual container
       startup, job completion, harvesting and stop without GPU dependencies.
+- [x] Add `/park` + `/unpark` to the forced-aligner fork (model ↔ CPU RAM +
+      empty_cache), advertise `eviction: "park"` + `parked` in `/v1/info`, with a
+      defensive on-device restore in `_get_model`. Tests + ruff green (43 pass).
+      ASS side flipped aligner to `evict = "park"` (priority 10, `no_preload`,
+      `vram_parked_mb = 500` estimate) in both TOMLs; docs updated.
 - [ ] Release/build the prepared forced-aligner image and smoke-test on the GPU
-      server; measure budgets on short/long tracks and language swaps. Runbook:
-      `docs/aligner.md`; backend source: `child_services/forced-aligner`.
+      server; **confirm the parked context tax** (est. 500 MiB) and pinned/RAM
+      budgets on short/long tracks and language swaps. Runbook: `docs/aligner.md`;
+      backend source: `child_services/forced-aligner`.
 - [ ] Onboard remaining backend (Whisper)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only

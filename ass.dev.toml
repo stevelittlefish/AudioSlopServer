@@ -38,6 +38,8 @@ env   = { JOB_MS = "300" }
 image = "ass-mockbackend:local"
 port = 8830
 verb = "align"           # mock returns alignment.json, including unresolved words
-evict = "stop"
+evict = "park"           # the fork now implements /park + /unpark (mock backend fakes
+                         # them); exercise the park swap path in dev
 priority = 10            # very low: a quick utility step, evicted first of all
+no_preload = true        # parkable now, so this bites: skip it in "preload all"
 env = { JOB_MS = "300" }
