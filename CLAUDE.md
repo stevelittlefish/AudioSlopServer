@@ -63,6 +63,13 @@ monopolizing its own.
   jobs and people who give a shit about the code. We're generating Slop; the
   project itself is Slop. Slop generating Slop.
 - When committing, proudly announce: **"Slopping it straight to main!"**
+- **Credit the model on every AI-assisted commit, in Claude Code style.**
+  Append a `Co-authored-by: Model Name <email>` trailer to the commit message,
+  separated from the body by a blank line. Use the actual model in use, not
+  just the coding agent's name. For Codex running GPT 6 Astra, use
+  `Co-authored-by: GPT 6 Astra <noreply@openai.com>`; substitute the current
+  model's name when using another model. For Claude Code, use its current
+  Claude model name with `<noreply@anthropic.com>`. Even Slop gives credit.
 - **Always `git push` after committing.** The first rule of Slop: Slop is for
   the masses, and the masses can't consume it while it's on our hard drive.
   Commit to `main`, then push it straight out.
