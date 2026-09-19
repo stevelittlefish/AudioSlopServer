@@ -69,9 +69,10 @@ rm -rf /srv/ass/cache/demucs /srv/ass/cache/stableaudio /srv/ass/cache/acestep
 # 2d. Pull the three fresh images.
 ./pull-services.sh          # pulls all services' :latest per ass.toml
 #     Reads the image list from the ASS binary (same config parse the server
-#     uses; disabled services are skipped). Uses `go run` if Go is installed,
-#     else the ass:local container — so a Docker-only host works once ass:local
-#     is built (docker compose build). Force one with ASS_IMAGES_VIA=go|docker.
+#     uses; disabled services are skipped). Defaults to the ass:local container
+#     (so a Docker-only host works — build it first with docker compose build),
+#     falling back to `go run` if the image isn't built. The config is bind-mounted
+#     by absolute path, so it can live anywhere. Force one with ASS_IMAGES_VIA=go|docker.
 
 # 2e. Restart ASS.
 ./run.sh -config ass.toml   # or however ASS is (re)started on the box

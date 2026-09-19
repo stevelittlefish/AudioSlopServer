@@ -19,9 +19,12 @@
 #
 # We get that list one of two ways, auto-detected (override with ASS_IMAGES_VIA=go
 # or =docker):
-#   - go run ./cmd/ass ...        when a Go toolchain is present (dev boxes)
-#   - docker run ass:local ...    otherwise — the deploy host needs only Docker,
-#                                 not Go (the binary was built inside the image).
+#   - docker run ass:local ...    the default when the image is built — the deploy
+#                                 host needs only Docker, not Go (the binary was
+#                                 built inside the image). The config is bind-mounted
+#                                 in by absolute path, so it can live anywhere.
+#   - go run ./cmd/ass ...        fallback when there's no ass:local image but a Go
+#                                 toolchain is present (dev boxes mid-iteration).
 # Build the image first with `docker compose build` (or `docker build`).
 
 set -uo pipefail
@@ -46,17 +49,18 @@ print_images_via_docker() {
     "$ASS_IMAGE" -config /cfg/config.toml -print-images
 }
 
-# Pick a method. Honour an explicit ASS_IMAGES_VIA; otherwise prefer Go when it's
-# here (dev, always fresh source), and fall back to the container image (deploy).
+# Pick a method. Honour an explicit ASS_IMAGES_VIA; otherwise default to the
+# container image (what the deploy host actually runs, and it needs only Docker),
+# falling back to `go run` only when the image isn't built but Go is around.
 method="${ASS_IMAGES_VIA:-}"
 if [ -z "$method" ]; then
-  if command -v go >/dev/null 2>&1; then
-    method=go
-  elif docker image inspect "$ASS_IMAGE" >/dev/null 2>&1; then
+  if docker image inspect "$ASS_IMAGE" >/dev/null 2>&1; then
     method=docker
+  elif command -v go >/dev/null 2>&1; then
+    method=go
   else
-    echo "Need a way to read the config: install Go, or build the $ASS_IMAGE" >&2
-    echo "image first (docker compose build). Then re-run." >&2
+    echo "Need a way to read the config: build the $ASS_IMAGE image first" >&2
+    echo "(docker compose build), or install Go. Then re-run." >&2
     exit 1
   fi
 fi
