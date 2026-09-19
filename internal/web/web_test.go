@@ -9,7 +9,7 @@ import (
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
-// cfg with the three real services plus one un-paged one, to exercise both the
+// cfg with the real services plus one un-paged one, to exercise both the
 // bespoke-page and generic-fallback branches.
 func testMux() *http.ServeMux {
 	mux := http.NewServeMux()
@@ -18,6 +18,7 @@ func testMux() *http.ServeMux {
 		"stableaudio": {},
 		"acestep":     {},
 		"yue":         {},
+		"aligner":     {},
 		"whisper":     {}, // configured but has no bespoke page -> generic fallback
 	}})
 	return mux
@@ -34,6 +35,7 @@ func TestPerServicePages(t *testing.T) {
 	mux := testMux()
 	cases := map[string]string{
 		"/test/demucs":      "Separate stems",
+		"/test/aligner":     "Align lyrics",
 		"/test/stableaudio": "Generate audio",
 		"/test/acestep":     "Generate a song",
 		"/test/yue":         "YuE2-3B", // both acestep+yue say "Generate a song"; this marker is yue-only

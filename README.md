@@ -133,7 +133,8 @@ masses can't consume it while it's sitting on our hard drive.
 
 Forced alignment is available as the `aligner` backend; see
 [setup and client migration](docs/aligner.md) for image preparation, the job API,
-and the initial memory estimates.
+and the initial memory estimates. The web console has an upload-and-lyrics form
+at `/test/aligner`; the development config includes a GPU-free mock aligner.
 
 ## Configuration
 

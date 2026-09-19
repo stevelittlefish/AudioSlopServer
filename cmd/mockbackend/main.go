@@ -47,6 +47,10 @@ func artifactsForVerb(verb string) []artifact {
 			{Name: "vocals.wav", Kind: "stem", ContentType: "audio/wav", Bytes: int64(len(silentWAV()))},
 			{Name: "no_vocals.wav", Kind: "stem", ContentType: "audio/wav", Bytes: int64(len(silentWAV()))},
 		}
+	case "align":
+		return []artifact{
+			{Name: "alignment.json", Kind: "metadata", ContentType: "application/json", Bytes: int64(len(fakeAlignment()))},
+		}
 	case "generate":
 		return []artifact{
 			{Name: "audio.flac", Kind: "audio", ContentType: "audio/flac", Bytes: int64(len(silentWAV()))},
@@ -62,6 +66,8 @@ func artifactsForVerb(verb string) []artifact {
 // bytesForArtifact returns the pretend contents of a named artifact.
 func bytesForArtifact(name string) ([]byte, string, bool) {
 	switch {
+	case name == "alignment.json":
+		return fakeAlignment(), "application/json", true
 	case strings.HasSuffix(name, ".abc"):
 		return fakeABC(), "text/vnd.abc", true
 	case strings.HasSuffix(name, ".wav"), strings.HasSuffix(name, ".flac"):
@@ -69,6 +75,12 @@ func bytesForArtifact(name string) ([]byte, string, bool) {
 	default:
 		return nil, "", false
 	}
+}
+
+// fakeAlignment is a fixed fixture, not an acoustic miracle from a GPU-less box.
+// Null timings exercise the unresolved-word case without inventing confidence.
+func fakeAlignment() []byte {
+	return []byte(`{"language":"en","duration":2.5,"lines":[{"text":"Hello world","start":0.2,"end":0.8,"words":[{"text":"Hello","start":0.2,"end":0.8},{"text":"world","start":null,"end":null}]}]}`)
 }
 
 // fakeABC is a tiny valid-ish ABC score, so the "not everything is audio" path

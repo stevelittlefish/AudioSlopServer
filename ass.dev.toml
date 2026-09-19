@@ -14,8 +14,7 @@ addr = ":2645"         # 0xA55 = "ASS" in hex
 db_path     = "data/dev/ass.db"
 results_dir = "data/dev/results"
 
-# Two fake backends so we can exercise multi-service routing (and, in Slice 2,
-# swapping between them).
+# Fake backends exercise multi-service routing, swapping and mixed artifacts.
 
 [services.demucs]
 image = "ass-mockbackend:local"
@@ -30,3 +29,10 @@ port  = 5340
 verb  = "generate"        # mock returns audio.flac + score.abc
 evict = "stop"
 env   = { JOB_MS = "300" }
+
+[services.aligner]
+image = "ass-mockbackend:local"
+port = 8830
+verb = "align"           # mock returns alignment.json, including unresolved words
+evict = "stop"
+env = { JOB_MS = "300" }

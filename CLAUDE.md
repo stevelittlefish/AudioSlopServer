@@ -15,11 +15,11 @@ backends only get tested later on the server (`ai.lemon.com`, which has GPUs +
 
 ```sh
 ./scripts/build-mockbackend.sh          # build ass-mockbackend:local (do this first)
-./run.sh -config ass.dev.toml           # run ASS against two mock backends, GPU off
+./run.sh -config ass.dev.toml           # run ASS against mock backends, GPU off
 go test ./...                           # unit + integration tests (skip if no docker)
 ```
 
-`ass.dev.toml` sets `gpu.enabled = false` and points two services at the mock
+`ass.dev.toml` sets `gpu.enabled = false` and points services at the mock
 image. `ass.toml` is the real-ish server example. Every commit goes **straight
 to `main` and gets pushed** (announce "Slopping it straight to main!").
 

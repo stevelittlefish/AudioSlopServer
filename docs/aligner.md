@@ -32,6 +32,38 @@ Only one language model stays loaded. See [measurement notes](measurements.md)
 for the assumptions and the live checks still needed. There is no park/unpark
 support in this initial integration.
 
+## Web console and local development
+
+The admin console lists `aligner` automatically from the configuration. Open
+`/test/aligner` to upload vocal audio, paste the exact lyrics (with line breaks),
+and optionally set the language code. The page submits through ASS, polls the
+job, and previews/downloads `alignment.json`. Blank language uses the backend
+configuration, which defaults to English.
+
+`ass.dev.toml` includes the mock aligner on port 8830. Rebuild the mock image
+after updating ASS, then start the development config:
+
+```sh
+./scripts/build-mockbackend.sh
+./run.sh -config ass.dev.toml
+```
+
+The mock returns a fixed English "Hello world" timing fixture with one unresolved
+word. It does not align the uploaded audio; it exercises the upload/job/JSON path.
+
+The normal Go suite checks multipart forwarding, lease protection during
+harvesting, telemetry, and JSON downloads after backend disconnection. To also
+exercise actual Docker startup and stop eviction without loading any ML models:
+
+```sh
+go test -tags integration ./internal/api -run TestAlignerDockerLifecycle -v
+```
+
+Run that Docker check separately from other container lifecycle tests: the
+supervisor's clean-slate test deliberately removes all ASS-labelled containers.
+It uses a dedicated `ass-aligner-smoke` container on port 18097 and removes it
+when finished. The mock image and Docker access are required.
+
 ## Client migration
 
 Submit a vocal stem and its known lyrics. The multipart field names remain
