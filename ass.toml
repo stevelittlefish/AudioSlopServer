@@ -49,6 +49,8 @@ image = "ghcr.io/stevelittlefish/stem-separator:latest"
 port  = 5336
 verb  = "separate"
 evict = "park"          # small enough to keep parked in RAM
+priority = 60           # higher = evicted LAST. demucs is a cheap, frequently-used
+                        # preprocessing step, so keep it hot over the heavy generators.
 vram_pinned_mb = 1200   # MEASURED peak: 554 MiB via /v1/info telemetry on the 3090.
                         # demucs is tiny; 1200 is generous headroom.
 vram_parked_mb = 400    # MEASURED: 354 MiB parked on a 3090 (see docs/measurements.md).
@@ -81,6 +83,8 @@ verb  = "generate"      # POST /v1/generate; returns audio.wav (+ spectrogram)
 evict = "park"          # cold start reloads a multi-GB checkpoint + flash-attn,
                         # so the fast park/unpark swap earns its keep here. The
                         # peasant box (tight RAM) should switch this to "stop".
+priority = 50           # the default-ish middle. Evicted before demucs, after the
+                        # heavier generators aren't around to throw off instead.
 vram_pinned_mb = 6500   # MEASURED peak: 5388 MiB via /v1/info telemetry on the 3090.
                         # Was at 90% of the old 6000 — nudged up for headroom.
 vram_parked_mb = 2000   # MEASURED: 1948 MiB parked on a 3090 — the HEAVIEST park tax
@@ -138,6 +142,8 @@ evict = "park"          # ACE-Step is the backend park pays off MOST for: its co
                         # park analysis in docs/measurements.md. Context tax is the
                         # one number still to confirm on the box (expected 0.5-2GB;
                         # fits GPU 0's ~21.5GB usable with room to spare).
+priority = 30           # a heavy generator: cheaper to the swap decision than the
+                        # small always-on services, so it gets thrown off before them.
 vram_pinned_mb = 16500  # MEASURED peak: 16,154MB
 vram_parked_mb = 700    # MEASURED: 616 MiB parked on a 3090 — SMALL, despite the XL
                         # DiT. OFFLOAD_TO_CPU already keeps most weights off the card, so
@@ -193,6 +199,10 @@ evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
                         # (context tax) and unpark latency are still UNMEASURED —
                         # confirm on the box (docs/measurements.md) and drop back to
                         # "stop" only if the numbers don't justify holding it in RAM.
+priority = 20           # low: the heaviest generator, happy to give up the card the
+                        # moment anything else wants it (only the aligner ranks lower).
+no_preload = true       # don't warm YuE on "preload all": it's a big RAM/VRAM hog and
+                        # not every session uses it — let it cold-start on first demand.
 vram_pinned_mb = 10500  # MEASURED peak: 9486 MiB via /v1/info telemetry on the 3090 —
                         # the old 8000 was 19% too low. Set above the observed peak.
 vram_parked_mb = 1100   # MEASURED: 1042 MiB parked on a 3090. See docs/measurements.md.
@@ -207,3 +217,34 @@ shm_size_mb = 8192      # generation wants elbow room
 # backend is deliberate — vllm would greedily pin VRAM and fight park/share.
 env = { YUE_API_PORT = "5340", HF_HOME = "/cache/yue/huggingface", TORCH_HOME = "/cache/yue/torch", HF_TOKEN_PATH = "/cache/hf-token" }
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/yue:/app/outputs"]
+
+[services.aligner]
+# Forced alignment: vocal audio + known lyrics -> alignment.json (word/line times).
+# Release the prepared forced-aligner image before pulling this new service.
+image = "ghcr.io/stevelittlefish/forced-aligner:latest"
+port = 8830
+verb = "align"
+evict = "park"         # /park + /unpark implemented (model -> CPU RAM and back), so
+                       # a swap costs a PCIe copy, not a container cold start. ASS still
+                       # harvests the JSON before parking. Peasant box: switch to "stop".
+priority = 10          # very low: a quick utility step, happy to be thrown off the
+                       # card the moment anything else wants it. Evicted first of all.
+no_preload = true      # keep it out of "preload all": now that it's parkable this DOES
+                       # bite — don't warm the aligner into RAM eagerly, it's a big
+                       # reserve and not every session aligns. Cold-starts on first job.
+vram_pinned_mb = 14000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
+                       # reserved spike on a 10-minute track. One language model
+                       # resident; long audio can still exceed this reservation.
+vram_parked_mb = 500   # MEASURED: 332 MiB parked on a 3090 (ass-aligner, 2026-09-19 —
+                       # just the CUDA context, weights on CPU). Kept at 500 for headroom
+                       # and to match gpu.context_tax_mb, which this falls back to if
+                       # deleted. See docs/measurements.md.
+ram_reserve_mb = 6000  # ESTIMATE, UNMEASURED: model, decoded audio, alignment scratch
+idle_ttl = "0"
+shm_size_mb = 2048
+# Image includes its TOML defaults (CUDA, English preload, port 8830). These env
+# vars configure third-party library caches only. WhisperX's model_dir is set
+# in the baked TOML to /cache/aligner/models. Weights survive stop OR park eviction.
+env = { HF_HOME = "/cache/aligner/huggingface", TORCH_HOME = "/cache/aligner/torch", HF_TOKEN_PATH = "/cache/hf-token" }
+volumes = ["/srv/ass/cache:/cache"]
+# No outputs mount: ASS owns the harvested result, container scratch is disposable.

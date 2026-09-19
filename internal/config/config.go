@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -19,6 +20,11 @@ type Config struct {
 	Docker   Docker             `toml:"docker"`
 	Web      Web                `toml:"web"`
 	Services map[string]Service `toml:"services"`
+
+	// DisabledServices names the [services.*] entries dropped because they set
+	// disabled = true. Not from the TOML — filled in by validate() after it
+	// removes them from Services, purely so startup can log what it skipped.
+	DisabledServices []string `toml:"-"`
 }
 
 // Web governs the human-facing web console and its operator controls (park /
@@ -95,6 +101,13 @@ const (
 
 // Service is a single audio backend ASS multiplexes onto the GPU.
 type Service struct {
+	// Disabled removes this service from ASS entirely: it isn't registered, can't
+	// be started or addressed, never shows in /v1/backends or the web console, and
+	// pull-services.sh skips its image. A disabled block is inert config — the rest
+	// of its fields aren't even validated — so you can park a half-configured
+	// service here without breaking startup. Default false: the service is live.
+	Disabled bool `toml:"disabled"`
+
 	Image        string            `toml:"image"`
 	Container    string            `toml:"container"` // container name; defaults to "ass-<service>"
 	Port         int               `toml:"port"`      // published, and passed to the backend
@@ -106,6 +119,21 @@ type Service struct {
 	Evict        EvictPolicy       `toml:"evict"` // park | stop
 	RAMReserveMB int               `toml:"ram_reserve_mb"`
 	IdleTTL      Duration          `toml:"idle_ttl"` // 0 = never reclaim parked RAM
+
+	// Priority biases which resident gets evicted first when the card is full.
+	// HIGHER = more valuable = evicted LAST. The arbiter evicts the lowest
+	// priority zero-lease resident, breaking ties by least-recently-used. Leave
+	// everything equal (the default) and you get pure LRU, the old behaviour.
+	// Bump one service up and it survives swaps until nothing cheaper is resident.
+	Priority int `toml:"priority"`
+
+	// NoPreload keeps this service out of "Preload all" (POST /v1/backends/
+	// preload-all). Preload warms every parkable backend into RAM ahead of time;
+	// set this on a backend you'd rather not pay to warm eagerly — a rarely-used
+	// one, or a RAM hog on a tight box — and it stays stopped until a real job
+	// wants it. Only meaningful for evict = "park" (stop services never preload
+	// anyway). Default false: preload warms it like everything else.
+	NoPreload bool `toml:"no_preload"`
 
 	// VRAMPinnedMB is what this service holds on the card while it's pinned. Use
 	// the MEASURED PEAK (the "max" from scripts/measure-vram.sh), not the idle
@@ -192,7 +220,22 @@ func (c *Config) validate() error {
 	if c.GPU.VRAMBudgetMB < 0 {
 		return fmt.Errorf("gpu.vram_budget_mb %d is negative", c.GPU.VRAMBudgetMB)
 	}
+	// Drop disabled services before anything else looks at the map, so the rest of
+	// ASS never learns they existed. Their remaining fields go unvalidated on
+	// purpose — a disabled block is allowed to be incomplete.
+	c.DisabledServices = nil
+	for name, svc := range c.Services {
+		if svc.Disabled {
+			c.DisabledServices = append(c.DisabledServices, name)
+			delete(c.Services, name)
+		}
+	}
+	sort.Strings(c.DisabledServices)
+
 	if len(c.Services) == 0 {
+		if len(c.DisabledServices) > 0 {
+			return fmt.Errorf("every [services.*] is disabled — nothing left to serve (enable one)")
+		}
 		return fmt.Errorf("no [services.*] configured — ASS with nothing to serve is just S")
 	}
 	for name, svc := range c.Services {

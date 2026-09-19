@@ -207,17 +207,28 @@ func (a *API) handleBackends(w http.ResponseWriter, r *http.Request) {
 		// parked, 0 while stopped. Summed across backends it's the arbiter's
 		// own idea of "used", which is what it budgets against.
 		VRAMMB int `json:"vram_mb"`
+		// VRAMPinnedMB is the service's configured pinned reservation, and
+		// OverBudget flags that this single reservation is larger than the whole
+		// gpu.vram_budget_mb — so it can't be budgeted to fit. ASS still loads it
+		// (evicting everything and hoping the real usage stays under the card), but
+		// the UI should warn: a heavy job on this backend may OOM. Static, from
+		// config — shown even while the backend is stopped.
+		VRAMPinnedMB int  `json:"vram_pinned_mb"`
+		OverBudget   bool `json:"over_budget"`
 		// Phase / PhaseSince: what's happening to this backend mid-swap, so the
 		// admin console can show "cold-starting… 0:42" instead of a dead button.
 		Phase      string `json:"phase,omitempty"`
 		PhaseSince string `json:"phase_since,omitempty"`
 	}
 	snap := a.arbiter.Snapshot()
+	budgeted := a.cfg.GPU.VRAMBudgetMB > 0
 	var out []backendView
 	for name, svc := range a.cfg.Services {
 		bv := backendView{
 			Name: name, Image: svc.Image, Verb: svc.Verb, Evict: string(svc.Evict),
-			Residency: "stopped", // default: never touched = not resident
+			Residency:    "stopped", // default: never touched = not resident
+			VRAMPinnedMB: svc.VRAMPinnedMB,
+			OverBudget:   budgeted && svc.VRAMPinnedMB > a.cfg.GPU.VRAMBudgetMB,
 		}
 		if s, ok := snap[name]; ok {
 			bv.Residency, bv.Leases, bv.LastUsed = s.Residency, s.Leases, s.LastUsed

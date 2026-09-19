@@ -167,6 +167,52 @@ Always budget on `peak_mb`, never the post-job `reserved`/`allocated`.
 Caveat: these are 1–3 samples each. Peaks grow with longer audio, more steps and
 bigger batches, so treat them as a floor and let the telemetry keep accumulating.
 
+### The aligner is different: VRAM scales with audio length
+
+Every backend above has a roughly **fixed** pinned cost — a generator peaks about
+the same whether the clip is 30s or 5min. **The forced aligner does not.** wav2vec2
+CTC alignment holds the whole track's activations on the card at once, so its VRAM
+peak **grows with audio duration**:
+
+- A typical **~4 minute** song is comfortably under budget.
+- A **20 minute** track pushes the aligner **over 16 GB**.
+
+So `vram_pinned_mb` for the aligner is a **deliberate compromise, not a safe
+ceiling.** Setting it to the 20-minute worst case (>16GB) would wastefully reserve
+the whole card for the common 4-minute job and block co-tenants for no reason.
+Setting it to the 4-minute cost risks an OOM on the rare long track. The current
+**14000 MiB** is a middle guess: generous for normal songs, still short of the
+longest. Options if long tracks become common: raise the reservation and accept
+the waste, chunk long audio in the backend, or fail-fast over a length threshold
+rather than OOM mid-align. Recorded here so nobody "fixes" the reservation to the
+max and wonders why the card is always full.
+
+**That spike is transient — the aligner frees it after every job.** The peak
+above is the *inference* peak, not steady state: `align()`'s `finally` drops the
+audio/alignment tensors and calls `empty_cache()`, and the image sets
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` so the fragmented multi-GB
+reserved pool is actually returned to the driver instead of sitting there until
+the next song reuses it (which is what an earlier build did — the card looked
+stuck at the long-song peak between jobs). Only the resident wav2vec2 weights
+stay on the card once a job completes, so a long track no longer taxes the
+co-tenants after it finishes — only while it's actually aligning.
+
+**Parked cost is now measured: 332 MiB (2026-09-19).** With the park-capable
+forced-aligner image deployed, per-process `nvidia-smi` on the fully-parked stack
+shows `ass-aligner` (PID mapped to its own `/usr/bin/python` process — the only ASS
+backend not on a venv/pyenv, so it's easy to spot) holding **332 MiB on a 3090**.
+That's the CUDA context only, length-independent, weights on CPU RAM — exactly the
+"small and fixed" shape the generators showed, confirming the parked tax has nothing
+to do with the length-scaling inference peak above. The `vram_parked_mb = 500`
+figure in `ass.toml` stays put: it's safely conservative and matches
+`gpu.context_tax_mb`, so no reason to shave 168 MiB for its own sake.
+
+For reference, the whole ASS stack parked on GPU 0 was ~1.46 GB across five
+backends (256–332 MiB each). Note a **non-ASS co-tenant** shared the card at the
+time: `wyoming-whisper` held ~2.1 GB on GPU 0. ASS can't see or evict that, so it
+does not count against `vram_budget_mb` automatically — leave headroom, or move
+such tenants off the ASS card.
+
 ### Lazy VRAM load (nvtop-confirmed) — FIXED for demucs (2026-09-18)
 
 **Originally:** demucs used **zero VRAM until its first request** — the container
@@ -325,3 +371,23 @@ again — the drop is the model weights, the residual is that backend's real
 
 These reads can be done remotely: `ssh -o BatchMode=yes ai.lemon.com 'nvidia-smi …'`
 works from a dev box, so measurement doesn't require sitting on the host.
+
+## Forced aligner — initial estimates (not measured)
+
+The new `aligner` service starts with `vram_pinned_mb = 12000` and
+`ram_reserve_mb = 6000`, in MiB. Stop eviction means no parked model or parked
+VRAM reservation. Only one language model is held at a time; changing language
+unloads the previous model before loading another.
+
+The VRAM estimate includes headroom above a historical source-code note of
+roughly 9.9 GB reserved after a ten-minute track. That is not a measurement of
+this ASS deployment, nor a limit enforced on individual jobs. Input duration and
+language affect the peak. The RAM value is an initial allowance for the model,
+audio and alignment scratch, also unmeasured.
+
+On the GPU server, measure short and long songs, a language switch, warm and
+cold starts, and another backend forcing eviction. Record allocated/reserved/
+peak VRAM from `/v1/backends/aligner/info`, total driver VRAM and process RAM.
+Verify cached weights survive eviction and ASS still serves the old
+`alignment.json` after the container is removed. Replace these estimates with
+measured reservations and headroom before relying on packing near the GPU limit.

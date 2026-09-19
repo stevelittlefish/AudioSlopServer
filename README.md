@@ -48,8 +48,9 @@ git clone https://github.com/stevelittlefish/AudioSlopServer.git
 cd AudioSlopServer
 
 sudo mkdir -p /srv/ass/cache /srv/ass/data   # persistent: model cache + job store
+docker compose build                         # build ass:local (also used to list images)
 ./pull-services.sh                           # pull backend images from GHCR
-docker compose up -d --build                 # start ASS on :2645
+docker compose up -d                         # start ASS on :2645
 
 curl -s localhost:2645/health                # {"status":"ok","service":"ASS"}
 ```
@@ -70,6 +71,18 @@ That's the whole loop. No GPU? Develop against mock backends instead:
 deployment detail and the park/unpark validation steps live in
 [docs/deploy.md](docs/deploy.md); every config knob is in
 [Configuration](#configuration).
+
+## Reference checkouts
+
+[`references/`](references/README.md) holds upstream projects, clients, and
+examples. [`child_services/`](child_services/README.md) holds reference checkouts
+of the backend services ASS orchestrates. These external repositories are not
+part of this codebase; all checkout folders are gitignored.
+
+```sh
+./references/pull.sh
+./child_services/pull.sh
+```
 
 ## Best Practices & Guiding Philosophy
 
@@ -119,6 +132,11 @@ We **Slop straight to `main`** and push immediately. No branches, no PRs —
 those are for people who care about their code. Slop is for the masses, and the
 masses can't consume it while it's sitting on our hard drive.
 
+Forced alignment is available as the `aligner` backend; see
+[setup and client migration](docs/aligner.md) for image preparation, the job API,
+and the initial memory estimates. The web console has an upload-and-lyrics form
+at `/test/aligner`; the development config includes a GPU-free mock aligner.
+
 ## Configuration
 
 Everything ASS knows lives in one TOML file (rule 4 — no environment-variable
@@ -158,11 +176,14 @@ worked examples. The full option surface:
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
+| `disabled` | bool | `false` | Remove this service from ASS entirely: not registered, not startable, absent from `/v1/backends` and the web console, and skipped by `pull-services.sh`. Its other fields aren't validated, so a disabled block may be incomplete. |
 | `image` | string | *(required)* | Docker image to run. Local (`stem-separation:local`) or a registry ref (`ghcr.io/.../stem-separator:latest`). ASS never auto-pulls — the image must be present locally. |
 | `port` | int | *(required)* | Container port, **published to the same host port**, and injected into the container as `PORT`. |
 | `verb` | string | — | Job verb (`separate`, `generate`, …); injected as `VERB`. Forms the backend URL `/v1/<verb>`. |
 | `container` | string | `ass-<name>` | Container name ASS creates. |
 | `evict` | `park`\|`stop` | `stop` | How ASS frees the GPU. `park` needs the backend's `/park`+`/unpark`; `stop` kills the container. |
+| `priority` | int | `0` | Which resident is evicted first when the card is full. **Higher = evicted last.** Victim = lowest-priority zero-lease resident, ties broken least-recently-used; all equal (the default) = plain LRU. |
+| `no_preload` | bool | `false` | Exclude this service from "Preload all" (`POST /v1/backends/preload-all`). It stays stopped until a real job wants it. For rarely-used backends or RAM hogs you'd rather not warm eagerly. (`stop` services never preload anyway.) |
 | `ram_reserve_mb` | int | `0` | Cost of keeping this parked in RAM, for budgeting. |
 | `idle_ttl` | duration | `0` | `0` = never reclaim parked RAM. Set e.g. `"10m"` on a constrained box to demote parked → stopped. |
 | `env` | table | `{}` | Extra environment for the container. **`PORT` and `VERB` are always injected**; add anything else here (e.g. a backend that reads `SEP_PORT` instead of `PORT`). |

@@ -19,24 +19,11 @@ set -uo pipefail
 # than the remote's basename — e.g. pinning upstream ACE-Step to a distinct dir
 # so it never pulls into our fork's clone.
 PUBLIC_REPOS=(
-  # ACE-Step 1.5 — our server fork (renamed to ACE-Step-1.5-inference-server),
-  # and the upstream it forked from.
-  "git@github.com:stevelittlefish/ACE-Step-1.5-inference-server.git"
+  # Upstream projects for comparison with the services in ../child_services.
   "git@github.com:ace-step/ACE-Step-1.5.git|ACE-Step-1.5-upstream"
-  # Karaoke: word-level forced alignment.
-  "git@github.com:stevelittlefish/forced-aligner.git"
-  # Stable Audio 3 — our dockerised (probably stale) wrapper, and upstream.
-  "git@github.com:stevelittlefish/stable-audio-3-docker.git"
   "git@github.com:Stability-AI/stable-audio-3.git"
-  # YuE 2 — music generation: our server fork, and the upstream it forked from.
-  # Dir pinned lowercase to match the existing checkout (the remote's canonical
-  # name is capitalised YuE-inference-server; basename would clone a second copy).
-  "git@github.com:stevelittlefish/YuE-inference-server.git|yue-inference-server"
   "git@github.com:multimodal-art-projection/YuE.git"
-  # DEMUCS stem-separation server.
-  "git@github.com:stevelittlefish/stem-separator.git"
-  # Not a backend — a pattern reference. Its GoReleaser + GitHub Actions setup is
-  # the model we copy for building/versioning/publishing our own images.
+  # Build/versioning/publishing patterns, not a backend.
   "git@github.com:stevelittlefish/llm_proxy.git"
 )
 

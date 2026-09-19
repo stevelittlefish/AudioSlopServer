@@ -26,7 +26,7 @@ the push fires that repo's CI, which builds the image and publishes it to GHCR.
 The builds run in CI — you don't need a GPU for them. Bump all three to **v1.1.0**:
 
 ```sh
-cd ~/git/AudioSlopServer/references/ACE-Step-1.5-inference-server
+cd ~/git/AudioSlopServer/child_services/ACE-Step-1.5-inference-server
 ./make_release.sh v1.1.0 "Fast deps-before-source Dockerfile; per-service cache + shared HF_TOKEN_PATH"
 
 cd ~/git/stable-audio-3-docker
@@ -68,6 +68,11 @@ rm -rf /srv/ass/cache/demucs /srv/ass/cache/stableaudio /srv/ass/cache/acestep
 
 # 2d. Pull the three fresh images.
 ./pull-services.sh          # pulls all services' :latest per ass.toml
+#     Reads the image list from the ASS binary (same config parse the server
+#     uses; disabled services are skipped). Defaults to the ass:local container
+#     (so a Docker-only host works — build it first with docker compose build),
+#     falling back to `go run` if the image isn't built. The config is bind-mounted
+#     by absolute path, so it can live anywhere. Force one with ASS_IMAGES_VIA=go|docker.
 
 # 2e. Restart ASS.
 ./run.sh -config ass.toml   # or however ASS is (re)started on the box

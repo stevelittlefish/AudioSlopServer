@@ -90,7 +90,7 @@ COPY . /app/                           # source — a tiny layer
 ```
 
 Do this for:
-- [x] **ACE-Step** (`references/ACE-Step-1.5-inference-server/Dockerfile`) — was the
+- [x] **ACE-Step** (`child_services/ACE-Step-1.5-inference-server/Dockerfile`) — was the
       real offender. Now copies `pyproject.toml` + `uv.lock` + the `nano-vllm` path
       dep first, `uv sync --no-install-project`, THEN source + a final project sync.
 - [x] **Stable Audio 3** (`~/git/stable-audio-3-docker/Dockerfile`) — already did
@@ -174,7 +174,7 @@ v1.0.0). Cutting the tag fires each repo's CI, which does the slow rebuild and
 publishes to GHCR — no GPU needed for the build. **These three tag pushes are the
 only thing left for a human (the release classifier blocked me from cutting them):**
 
-- [ ] ACE-Step: `references/ACE-Step-1.5-inference-server/make_release.sh v1.1.0 "Fast deps-before-source Dockerfile; per-service cache + shared HF_TOKEN_PATH"`
+- [ ] ACE-Step: `child_services/ACE-Step-1.5-inference-server/make_release.sh v1.1.0 "Fast deps-before-source Dockerfile; per-service cache + shared HF_TOKEN_PATH"`
 - [ ] Stable Audio 3: `~/git/stable-audio-3-docker/make_release.sh v1.1.0 "Announce weight download at startup; HF_TOKEN_PATH"`
 - [ ] stem-separator: `~/git/stem-separator/make_release.sh v1.1.0 "HF_TOKEN_PATH default"`
 - [x] `ass.toml` committed + pushed (ASS-side, no rebuild)
@@ -189,4 +189,4 @@ See **DEPLOY.md** for the full copy-paste rebuild + deploy runbook.
 - Never commit the HF token. Seed it on the host only.
 - Sarcasm in commits/comments; Go for anything we own; no OOP.
 - All three fork clones with a configured `origin`: ACE-Step is under
-  `references/`; SA3 and stem-separator are full clones under `~/git/`.
+  `child_services/`; SA3 and stem-separator are full clones under `~/git/`.

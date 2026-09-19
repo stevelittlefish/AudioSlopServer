@@ -190,7 +190,7 @@ done.
 
 Onboarding ACE-Step the same way stem-separator and SA3 were conformed. Fork is
 `stevelittlefish/ACE-Step-1.5-inference-server` (renamed from `ACE-Step-1.5`;
-cloned in `references/ACE-Step-1.5-inference-server`). Heavy torch path
+cloned in `child_services/ACE-Step-1.5-inference-server`). Heavy torch path
 tests only on the GPU box.
 
 **Two things make this the biggest conform yet:**
@@ -505,7 +505,40 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       constant `831001`, so a seedless request rendered the same song byte-for-byte.
       The tester's client-side stopgap can come out once the new image is deployed.
       NB ACE-Step has the same class of trap — see SlopBC's notes.
-- [ ] Onboard remaining backends (YuE, Whisper, aligner)
+- [x] Prepare forced-aligner for ASS: add serial async
+      jobs, alignment.json harvesting, VRAM telemetry, one-language residency,
+      stop eviction, container defaults/cache wiring, release workflow and tests.
+      ASS config estimates: 12000 MiB VRAM / 6000 MiB RAM; not live measurements.
+      Synchronous `/align` restored for standalone use, sharing the same worker
+      and limits, returning timing JSON directly with temporary-file cleanup.
+- [x] ASS aligner hosting: production registration plus `/test/aligner` upload/
+      lyrics/language form, mock alignment JSON and dev config. API integration
+      verifies exact multipart forwarding, telemetry, harvest lease protection
+      and results after stop. Docker smoke test exercises actual container
+      startup, job completion, harvesting and stop without GPU dependencies.
+- [x] Add `/park` + `/unpark` to the forced-aligner fork (model ↔ CPU RAM +
+      empty_cache), advertise `eviction: "park"` + `parked` in `/v1/info`, with a
+      defensive on-device restore in `_get_model`. Tests + ruff green (43 pass).
+      ASS side flipped aligner to `evict = "park"` (priority 10, `no_preload`,
+      `vram_parked_mb = 500` estimate) in both TOMLs; docs updated.
+- [ ] Release/build the prepared forced-aligner image and smoke-test on the GPU
+      server; **confirm the parked context tax** (est. 500 MiB) and pinned/RAM
+      budgets on short/long tracks and language swaps. Runbook: `docs/aligner.md`;
+      backend source: `child_services/forced-aligner`.
+- [x] Per-service `disabled` flag. `disabled = true` drops a service from ASS
+      entirely (validate() deletes it from the map before anything else sees it,
+      recording it in `DisabledServices` for a startup log line) and skips its
+      image in `pull-services.sh`. The pull script now gets its image list from
+      `ass -print-images` (the same config.Load the server runs) instead of
+      hand-parsing TOML — single source of truth, disabled honored for free.
+- [x] Oversized-service escape hatch. When a service's `vram_pinned_mb` exceeds
+      the whole `gpu.vram_budget_mb`, the arbiter no longer waits forever (which
+      timed the job out at 30m) — it evicts every zero-lease resident and loads it
+      anyway, over budget, since the reservation is a worst-case ceiling. Warns in
+      three places: startup log, arbiter runtime log, and `over_budget` on
+      `/v1/backends` → amber banner in the admin console. Still refuses to stack on
+      a *running* (leased) job. Tests in `arbiter_test.go`.
+- [ ] Onboard remaining backend (Whisper)
 - [ ] `idle_ttl` parked→stopped RAM reclaim (the peasant path)
 - [ ] SSE job streaming instead of poll-only
 - [ ] Auth (backends already support an API key; decide if ASS fronts it)
@@ -514,6 +547,12 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       16GB box `ai2.lemon.com`): ~0.39GB VRAM baseline with everything off;
       demucs `htdemucs_ft` ~0.5GB resident, ~1.6GB peak. Demucs is small. Still
       need: measure the real parked context tax, and other models.
+- [x] **Eviction priority knob.** Per-service `priority` int (higher = evicted
+      last). Victim = lowest-priority zero-lease resident, ties broken LRU; all
+      equal (default 0) = plain LRU, so nothing changes unless you set it. Wired
+      into `planLocked`, documented in `docs/scheduling.md` ("Eviction priority"),
+      README config table, CLAUDE.md, and seeded into both TOMLs. A *bias*, not a
+      pin — a hard "never auto-evict" is still the sticky-flag idea below.
 - [ ] **Smarter eviction than "evict on count."** The strong case: a small
       service (tiny VRAM footprint) shouldn't be evicted at all just because a
       different model wants the card — it can ride along. Once eviction is

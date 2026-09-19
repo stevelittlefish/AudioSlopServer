@@ -14,14 +14,16 @@ addr = ":2645"         # 0xA55 = "ASS" in hex
 db_path     = "data/dev/ass.db"
 results_dir = "data/dev/results"
 
-# Two fake backends so we can exercise multi-service routing (and, in Slice 2,
-# swapping between them).
+# Fake backends exercise multi-service routing, swapping and mixed artifacts.
 
 [services.demucs]
 image = "ass-mockbackend:local"
 port  = 5336
 verb  = "separate"        # mock returns vocals.wav + no_vocals.wav
 evict = "park"
+priority = 60             # keep demucs hot over the generators (higher = evicted last)
+no_preload = true         # dev: exercise the preload-exclusion path (demucs stays cold
+                          # until a job wants it, even on "preload all")
 env   = { JOB_MS = "300" }
 
 [services.yue]
@@ -29,4 +31,15 @@ image = "ass-mockbackend:local"
 port  = 5340
 verb  = "generate"        # mock returns audio.flac + score.abc
 evict = "stop"
+priority = 20             # lowest: the heavy generator, evicted first
 env   = { JOB_MS = "300" }
+
+[services.aligner]
+image = "ass-mockbackend:local"
+port = 8830
+verb = "align"           # mock returns alignment.json, including unresolved words
+evict = "park"           # the fork now implements /park + /unpark (mock backend fakes
+                         # them); exercise the park swap path in dev
+priority = 10            # very low: a quick utility step, evicted first of all
+no_preload = true        # parkable now, so this bites: skip it in "preload all"
+env = { JOB_MS = "300" }

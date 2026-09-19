@@ -15,11 +15,11 @@ backends only get tested later on the server (`ai.lemon.com`, which has GPUs +
 
 ```sh
 ./scripts/build-mockbackend.sh          # build ass-mockbackend:local (do this first)
-./run.sh -config ass.dev.toml           # run ASS against two mock backends, GPU off
+./run.sh -config ass.dev.toml           # run ASS against mock backends, GPU off
 go test ./...                           # unit + integration tests (skip if no docker)
 ```
 
-`ass.dev.toml` sets `gpu.enabled = false` and points two services at the mock
+`ass.dev.toml` sets `gpu.enabled = false` and points services at the mock
 image. `ass.toml` is the real-ish server example. Every commit goes **straight
 to `main` and gets pushed** (announce "Slopping it straight to main!").
 
@@ -63,6 +63,13 @@ monopolizing its own.
   jobs and people who give a shit about the code. We're generating Slop; the
   project itself is Slop. Slop generating Slop.
 - When committing, proudly announce: **"Slopping it straight to main!"**
+- **Credit the model on every AI-assisted commit, in Claude Code style.**
+  Append a `Co-authored-by: Model Name <email>` trailer to the commit message,
+  separated from the body by a blank line. Use the actual model in use, not
+  just the coding agent's name. For Codex running GPT 6 Astra, use
+  `Co-authored-by: GPT 6 Astra <noreply@openai.com>`; substitute the current
+  model's name when using another model. For Claude Code, use its current
+  Claude model name with `<noreply@anthropic.com>`. Even Slop gives credit.
 - **Always `git push` after committing.** The first rule of Slop: Slop is for
   the masses, and the masses can't consume it while it's on our hard drive.
   Commit to `main`, then push it straight out.
@@ -191,6 +198,16 @@ and serves a job API. That means:
 
 ### Backend memory state machine
 
+**Forced aligner:** the `aligner` service uses the ASS async job contract and
+returns `alignment.json`. Standalone clients can also use synchronous `/align`,
+which shares the serial worker and returns JSON directly. It keeps one
+language model resident and uses **park eviction** — the fork implements
+`/park` + `/unpark`, so a swap is a PCIe copy, not a cold start. It's marked
+`no_preload` (skipped by "preload all"; cold-starts on first demand).
+Initial reservations are **14000 MiB VRAM pinned / 6000 MiB RAM / ~500 MiB
+parked**, explicitly estimates pending live measurement. Cache paths are private to `/cache/aligner`, using
+the shared `/cache/hf-token`. Release and migration notes: [docs/aligner.md](docs/aligner.md).
+
 Cheapest-to-restore first. The arbiter's job is to get the target backend to
 `pinned` and demote the current occupant to the cheapest state the RAM budget
 and its config allow:
@@ -214,12 +231,22 @@ cooling the hot model on a timer (Ollama's model) buys nothing and costs a
 reload every time we idle past the timeout. So:
 
 - **VRAM eviction is lazy.** Keep the resident model `pinned` until a *different*
-  model actually needs the card, then evict the least-recently-used resident to
-  make room. **Never on a clock.** LRU picks the victim.
+  model actually needs the card, then evict a resident to make room. **Never on a
+  clock.** The victim is the **lowest-`priority`** zero-lease resident, ties
+  broken **least-recently-used** — so with everyone at the default priority it's
+  plain LRU, and bumping a service's `priority` keeps it hot over cheaper ones.
+  See `docs/scheduling.md` ("Eviction priority") for the full rule.
 - **`idle_ttl` is repurposed to reclaim RAM, not VRAM.** It governs only the
   deeper `parked → stopped` demotion — handing *system RAM* back to the OS. Off
   by default (the big server keeps things parked forever); set it on constrained
   boxes where a parked process holding RAM indefinitely is rude.
+- **Oversized services load anyway.** `vram_pinned_mb` is a worst-case ceiling, so
+  a service whose reservation exceeds the whole `vram_budget_mb` (a big generator
+  that only *sometimes* peaks over the card) isn't refused — ASS evicts everything
+  and loads it over budget, warning in the log, on `/v1/backends` (`over_budget`),
+  and in the console. It won't stack it on a *running* job, though: that waits.
+
+
 
 ### VRAM: fragmentation and the park context-tax
 
@@ -358,11 +385,17 @@ context_tax_mb = 500      # VRAM a parked (alive) process holds even with weight
                           # on the CPU. Charged per parked backend against the budget.
 
 [services.demucs]
+disabled = false          # true = service is completely absent: not registered, not
+                          # started, hidden from the API/console, image not pulled.
 image = "stem-separation:local"
 port  = 5336
 verb  = "separate"
 evict = "park"            # park | stop — how ASS frees the GPU (VRAM eviction is
                           # lazy either way; this only picks the demotion target)
+priority = 50             # higher = evicted LAST. Victim = lowest-priority zero-lease
+                          # resident, ties broken LRU. Default 0 (all equal) = plain LRU.
+no_preload = false        # true = exclude from "preload all"; it stays stopped until a
+                          # real job wants it. For rarely-used backends or RAM hogs.
 ram_reserve_mb = 1000     # cost of keeping this parked in system RAM, for budgeting
 idle_ttl = "0"            # 0 = never reclaim parked RAM. Peasant sets e.g. "10m"
                           # to demote parked -> stopped and hand RAM back.

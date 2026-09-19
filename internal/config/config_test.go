@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The configs we ship must actually load and validate — a typo'd budget or a
 // service missing vram_pinned_mb under a budget shouldn't be discovered on the
@@ -44,5 +47,43 @@ func TestParkedTaxDefaults(t *testing.T) {
 	}
 	if got := c.Services["parker"].VRAMParkedMB; got != 400 {
 		t.Errorf("park service parked tax = %d, want the 400 context-tax default", got)
+	}
+}
+
+// TestDisabledServiceIsDropped proves a disabled service vanishes from the map
+// (so the rest of ASS never sees it) yet is recorded in DisabledServices for
+// logging — and that its own fields aren't validated, so it may be incomplete.
+func TestDisabledServiceIsDropped(t *testing.T) {
+	c := &Config{
+		Services: map[string]Service{
+			"live": {Image: "i", Port: 1, Evict: EvictStop},
+			// No image, no port: would fail validation if it weren't disabled.
+			"off": {Disabled: true},
+		},
+	}
+	if err := c.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if _, ok := c.Services["off"]; ok {
+		t.Error("disabled service should be gone from Services")
+	}
+	if _, ok := c.Services["live"]; !ok {
+		t.Error("live service should remain")
+	}
+	if len(c.DisabledServices) != 1 || c.DisabledServices[0] != "off" {
+		t.Errorf("DisabledServices = %v, want [off]", c.DisabledServices)
+	}
+}
+
+// TestAllServicesDisabled gives a distinct, friendlier error than "none
+// configured" when every service is present but switched off.
+func TestAllServicesDisabled(t *testing.T) {
+	c := &Config{Services: map[string]Service{"off": {Disabled: true, Image: "i", Port: 1}}}
+	err := c.validate()
+	if err == nil {
+		t.Fatal("expected an error when every service is disabled")
+	}
+	if !strings.Contains(err.Error(), "disabled") {
+		t.Errorf("error %q should mention that services are disabled", err)
 	}
 }
