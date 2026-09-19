@@ -327,3 +327,35 @@ func TestPreloadAll(t *testing.T) {
 		t.Fatalf("preload must never stop anything; stopped = %v", sup.stopped)
 	}
 }
+
+// TestPreloadSkipsNoPreload proves a parkable backend with no_preload = true is
+// left stopped and reported skipped, while its normal sibling is still warmed.
+func TestPreloadSkipsNoPreload(t *testing.T) {
+	sup := newFakeSup(t, "warm", "cold")
+	cfg := &config.Config{
+		GPU: config.GPU{VRAMBudgetMB: 10000},
+		Services: map[string]config.Service{
+			"warm": {Image: "x", Port: 1, Evict: config.EvictPark, VRAMPinnedMB: 3000, VRAMParkedMB: 500},
+			"cold": {Image: "x", Port: 2, Evict: config.EvictPark, VRAMPinnedMB: 3000, VRAMParkedMB: 500, NoPreload: true},
+		},
+	}
+	a := New(sup, cfg)
+	ctx := context.Background()
+
+	res, err := a.PreloadAll(ctx)
+	if err != nil {
+		t.Fatalf("preload: %v", err)
+	}
+	if len(res.Preloaded) != 1 || res.Preloaded[0] != "warm" {
+		t.Fatalf("preloaded = %v, want just [warm]", res.Preloaded)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].Service != "cold" {
+		t.Fatalf("skipped = %+v, want just cold", res.Skipped)
+	}
+	if r := a.Snapshot()["cold"].Residency; r != "" && r != "stopped" {
+		t.Fatalf("cold (no_preload) should be untouched, got %s", r)
+	}
+	if a.Snapshot()["warm"].Residency != "parked" {
+		t.Fatalf("warm should be parked")
+	}
+}

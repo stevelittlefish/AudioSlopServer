@@ -322,10 +322,13 @@ func (a *Arbiter) PreloadAll(ctx context.Context) (PreloadResult, error) {
 	// Candidates, in a deterministic order: parkable, biggest first, then by name.
 	var cands []string
 	for name, svc := range a.cfg.Services {
-		if svc.Evict == config.EvictPark {
-			cands = append(cands, name)
-		} else {
+		switch {
+		case svc.NoPreload:
+			res.Skipped = append(res.Skipped, PreloadSkip{name, "no_preload set: excluded from preload"})
+		case svc.Evict != config.EvictPark:
 			res.Skipped = append(res.Skipped, PreloadSkip{name, "evict policy is stop, not parkable"})
+		default:
+			cands = append(cands, name)
 		}
 	}
 	sort.Slice(cands, func(i, j int) bool {

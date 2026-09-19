@@ -22,6 +22,8 @@ port  = 5336
 verb  = "separate"        # mock returns vocals.wav + no_vocals.wav
 evict = "park"
 priority = 60             # keep demucs hot over the generators (higher = evicted last)
+no_preload = true         # dev: exercise the preload-exclusion path (demucs stays cold
+                          # until a job wants it, even on "preload all")
 env   = { JOB_MS = "300" }
 
 [services.yue]
@@ -37,5 +39,5 @@ image = "ass-mockbackend:local"
 port = 8830
 verb = "align"           # mock returns alignment.json, including unresolved words
 evict = "stop"
-priority = 40            # a utility step: outlives the generator, below always-on demucs
+priority = 10            # very low: a quick utility step, evicted first of all
 env = { JOB_MS = "300" }

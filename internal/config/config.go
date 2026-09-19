@@ -114,6 +114,14 @@ type Service struct {
 	// Bump one service up and it survives swaps until nothing cheaper is resident.
 	Priority int `toml:"priority"`
 
+	// NoPreload keeps this service out of "Preload all" (POST /v1/backends/
+	// preload-all). Preload warms every parkable backend into RAM ahead of time;
+	// set this on a backend you'd rather not pay to warm eagerly — a rarely-used
+	// one, or a RAM hog on a tight box — and it stays stopped until a real job
+	// wants it. Only meaningful for evict = "park" (stop services never preload
+	// anyway). Default false: preload warms it like everything else.
+	NoPreload bool `toml:"no_preload"`
+
 	// VRAMPinnedMB is what this service holds on the card while it's pinned. Use
 	// the MEASURED PEAK (the "max" from scripts/measure-vram.sh), not the idle
 	// floor — the budget has to survive the worst moment of concurrent inference,

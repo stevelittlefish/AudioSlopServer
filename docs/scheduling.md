@@ -223,6 +223,11 @@ transient room only shrinks as park taxes accumulate.
 
 Rules:
 
+- It **skips any backend with `no_preload = true`**, reporting it in `skipped`
+  with that reason. This is the opt-out for a backend you don't want warmed
+  eagerly — a rarely-used one, or a RAM hog on a tight box — so it stays stopped
+  until a real job asks for it. (A `stop` service is skipped regardless; it has
+  no park state to preload into.)
 - It **never stops anything.** If the card is too full to cold-start the next
   candidate it may park idle pinned residents to make room, since parked is
   where they would end up anyway. A leased resident, or one with

@@ -383,6 +383,8 @@ evict = "park"            # park | stop — how ASS frees the GPU (VRAM eviction
                           # lazy either way; this only picks the demotion target)
 priority = 50             # higher = evicted LAST. Victim = lowest-priority zero-lease
                           # resident, ties broken LRU. Default 0 (all equal) = plain LRU.
+no_preload = false        # true = exclude from "preload all"; it stays stopped until a
+                          # real job wants it. For rarely-used backends or RAM hogs.
 ram_reserve_mb = 1000     # cost of keeping this parked in system RAM, for budgeting
 idle_ttl = "0"            # 0 = never reclaim parked RAM. Peasant sets e.g. "10m"
                           # to demote parked -> stopped and hand RAM back.

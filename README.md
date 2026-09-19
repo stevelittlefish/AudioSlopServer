@@ -181,6 +181,7 @@ worked examples. The full option surface:
 | `container` | string | `ass-<name>` | Container name ASS creates. |
 | `evict` | `park`\|`stop` | `stop` | How ASS frees the GPU. `park` needs the backend's `/park`+`/unpark`; `stop` kills the container. |
 | `priority` | int | `0` | Which resident is evicted first when the card is full. **Higher = evicted last.** Victim = lowest-priority zero-lease resident, ties broken least-recently-used; all equal (the default) = plain LRU. |
+| `no_preload` | bool | `false` | Exclude this service from "Preload all" (`POST /v1/backends/preload-all`). It stays stopped until a real job wants it. For rarely-used backends or RAM hogs you'd rather not warm eagerly. (`stop` services never preload anyway.) |
 | `ram_reserve_mb` | int | `0` | Cost of keeping this parked in RAM, for budgeting. |
 | `idle_ttl` | duration | `0` | `0` = never reclaim parked RAM. Set e.g. `"10m"` on a constrained box to demote parked → stopped. |
 | `env` | table | `{}` | Extra environment for the container. **`PORT` and `VERB` are always injected**; add anything else here (e.g. a backend that reads `SEP_PORT` instead of `PORT`). |

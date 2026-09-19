@@ -201,8 +201,10 @@ evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
                         # (context tax) and unpark latency are still UNMEASURED —
                         # confirm on the box (docs/measurements.md) and drop back to
                         # "stop" only if the numbers don't justify holding it in RAM.
-priority = 20           # lowest: the heaviest generator, happiest to give up the card
-                        # the moment anything else wants it. Evicted first of all.
+priority = 20           # low: the heaviest generator, happy to give up the card the
+                        # moment anything else wants it (only the aligner ranks lower).
+no_preload = true       # don't warm YuE on "preload all": it's a big RAM/VRAM hog and
+                        # not every session uses it — let it cold-start on first demand.
 vram_pinned_mb = 10500  # MEASURED peak: 9486 MiB via /v1/info telemetry on the 3090 —
                         # the old 8000 was 19% too low. Set above the observed peak.
 vram_parked_mb = 1100   # MEASURED: 1042 MiB parked on a 3090. See docs/measurements.md.
@@ -225,8 +227,8 @@ image = "ghcr.io/stevelittlefish/forced-aligner:latest"
 port = 8830
 verb = "align"
 evict = "stop"         # no park/unpark; ASS harvests JSON before removing container
-priority = 40          # a quick utility step in the pipeline; keep it around a little
-                       # longer than the big generators, below the always-on demucs.
+priority = 10          # very low: a quick utility step, happy to be thrown off the
+                       # card the moment anything else wants it. Evicted first of all.
 vram_pinned_mb = 12000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
                        # reserved spike on a 10-minute track. One language model
                        # resident; long audio can still exceed this reservation.
