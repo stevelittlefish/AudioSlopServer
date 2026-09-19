@@ -131,6 +131,10 @@ We **Slop straight to `main`** and push immediately. No branches, no PRs —
 those are for people who care about their code. Slop is for the masses, and the
 masses can't consume it while it's sitting on our hard drive.
 
+Forced alignment is available as the `aligner` backend; see
+[setup and client migration](docs/aligner.md) for image preparation, the job API,
+and the initial memory estimates.
+
 ## Configuration
 
 Everything ASS knows lives in one TOML file (rule 4 — no environment-variable

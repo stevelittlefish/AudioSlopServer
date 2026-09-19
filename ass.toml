@@ -209,3 +209,23 @@ shm_size_mb = 8192      # generation wants elbow room
 # backend is deliberate — vllm would greedily pin VRAM and fight park/share.
 env = { YUE_API_PORT = "5340", HF_HOME = "/cache/yue/huggingface", TORCH_HOME = "/cache/yue/torch", HF_TOKEN_PATH = "/cache/hf-token" }
 volumes = ["/srv/ass/cache:/cache", "/srv/ass/outputs/yue:/app/outputs"]
+
+[services.aligner]
+# Forced alignment: vocal audio + known lyrics -> alignment.json (word/line times).
+# Release the prepared forced-aligner image before pulling this new service.
+image = "ghcr.io/stevelittlefish/forced-aligner:latest"
+port = 8830
+verb = "align"
+evict = "stop"         # no park/unpark; ASS harvests JSON before removing container
+vram_pinned_mb = 12000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
+                       # reserved spike on a 10-minute track. One language model
+                       # resident; long audio can still exceed this reservation.
+ram_reserve_mb = 6000  # ESTIMATE, UNMEASURED: model, decoded audio, alignment scratch
+idle_ttl = "0"
+shm_size_mb = 2048
+# Image includes its TOML defaults (CUDA, English preload, port 8830). These env
+# vars configure third-party library caches only. WhisperX's model_dir is set
+# in the baked TOML to /cache/aligner/models. All weights survive stop eviction.
+env = { HF_HOME = "/cache/aligner/huggingface", TORCH_HOME = "/cache/aligner/torch", HF_TOKEN_PATH = "/cache/hf-token" }
+volumes = ["/srv/ass/cache:/cache"]
+# No outputs mount: ASS owns the harvested result, container scratch is disposable.

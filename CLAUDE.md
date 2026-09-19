@@ -198,6 +198,13 @@ and serves a job API. That means:
 
 ### Backend memory state machine
 
+**Forced aligner:** the `aligner` service uses the ASS async job contract and
+returns `alignment.json`. Its old synchronous API is removed. It keeps one
+language model resident and uses **stop eviction** (no park/unpark yet).
+Initial reservations are **12000 MiB VRAM / 6000 MiB RAM**, explicitly estimates
+pending live measurement. Cache paths are private to `/cache/aligner`, using
+the shared `/cache/hf-token`. Release and migration notes: [docs/aligner.md](docs/aligner.md).
+
 Cheapest-to-restore first. The arbiter's job is to get the target backend to
 `pinned` and demote the current occupant to the cheapest state the RAM budget
 and its config allow:

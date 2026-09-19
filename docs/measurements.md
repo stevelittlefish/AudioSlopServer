@@ -325,3 +325,23 @@ again — the drop is the model weights, the residual is that backend's real
 
 These reads can be done remotely: `ssh -o BatchMode=yes ai.lemon.com 'nvidia-smi …'`
 works from a dev box, so measurement doesn't require sitting on the host.
+
+## Forced aligner — initial estimates (not measured)
+
+The new `aligner` service starts with `vram_pinned_mb = 12000` and
+`ram_reserve_mb = 6000`, in MiB. Stop eviction means no parked model or parked
+VRAM reservation. Only one language model is held at a time; changing language
+unloads the previous model before loading another.
+
+The VRAM estimate includes headroom above a historical source-code note of
+roughly 9.9 GB reserved after a ten-minute track. That is not a measurement of
+this ASS deployment, nor a limit enforced on individual jobs. Input duration and
+language affect the peak. The RAM value is an initial allowance for the model,
+audio and alignment scratch, also unmeasured.
+
+On the GPU server, measure short and long songs, a language switch, warm and
+cold starts, and another backend forcing eviction. Record allocated/reserved/
+peak VRAM from `/v1/backends/aligner/info`, total driver VRAM and process RAM.
+Verify cached weights survive eviction and ASS still serves the old
+`alignment.json` after the container is removed. Replace these estimates with
+measured reservations and headroom before relying on packing near the GPU limit.
