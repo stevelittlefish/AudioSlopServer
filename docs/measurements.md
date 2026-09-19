@@ -167,6 +167,36 @@ Always budget on `peak_mb`, never the post-job `reserved`/`allocated`.
 Caveat: these are 1–3 samples each. Peaks grow with longer audio, more steps and
 bigger batches, so treat them as a floor and let the telemetry keep accumulating.
 
+### The aligner is different: VRAM scales with audio length
+
+Every backend above has a roughly **fixed** pinned cost — a generator peaks about
+the same whether the clip is 30s or 5min. **The forced aligner does not.** wav2vec2
+CTC alignment holds the whole track's activations on the card at once, so its VRAM
+peak **grows with audio duration**:
+
+- A typical **~4 minute** song is comfortably under budget.
+- A **20 minute** track pushes the aligner **over 16 GB**.
+
+So `vram_pinned_mb` for the aligner is a **deliberate compromise, not a safe
+ceiling.** Setting it to the 20-minute worst case (>16GB) would wastefully reserve
+the whole card for the common 4-minute job and block co-tenants for no reason.
+Setting it to the 4-minute cost risks an OOM on the rare long track. The current
+**14000 MiB** is a middle guess: generous for normal songs, still short of the
+longest. Options if long tracks become common: raise the reservation and accept
+the waste, chunk long audio in the backend, or fail-fast over a length threshold
+rather than OOM mid-align. Recorded here so nobody "fixes" the reservation to the
+max and wonders why the card is always full.
+
+**Parked cost still has to be measured — and that needs the park build deployed
+first.** Until the park-capable forced-aligner image is released and running on
+`ai.lemon.com`, there is nothing to `nvidia-smi`: a stopped backend parks nothing.
+So the aligner's `vram_parked_mb` stays an **estimate (500 MiB)** in `ass.toml`,
+and the measurement is blocked on the deploy, not on us. The parked tax should be
+small and length-independent (a parked process holds only the CUDA context, not the
+job's activations — same story as the generators above), but confirm it once the
+image is on the box. Chase it via the per-process `nvidia-smi` across an
+unpark→park cycle, exactly as the four backends above were measured.
+
 ### Lazy VRAM load (nvtop-confirmed) — FIXED for demucs (2026-09-18)
 
 **Originally:** demucs used **zero VRAM until its first request** — the container

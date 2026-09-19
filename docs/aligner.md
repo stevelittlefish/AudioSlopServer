@@ -32,6 +32,21 @@ Initial reservations are **14,000 MiB VRAM pinned and 6,000 MiB RAM**, plus a
 stays loaded. See [measurement notes](measurements.md) for the assumptions and
 the live checks still needed.
 
+**The pinned figure is a compromise, not a ceiling.** Unlike the generators, the
+aligner's VRAM peak **scales with audio length** — wav2vec2 holds the whole
+track's activations at once. A ~4-minute song (the common case) sits well under
+budget; a 20-minute track pushes **over 16 GB**. Reserving the 20-minute worst
+case would waste most of the card on every normal job, so `vram_pinned_mb = 14000`
+splits the difference: comfortable for typical songs, short of the longest. If
+long tracks become routine, raise it (and accept the waste), chunk the audio in
+the backend, or reject over-length input rather than OOM mid-align.
+
+**Parked usage can't be measured until this image is deployed.** A stopped backend
+parks nothing, so the `vram_parked_mb = 500` estimate stays a guess until the
+park-capable image is released and running on the box — then confirm it via
+per-process `nvidia-smi` across an unpark→park cycle. The measurement is gated on
+the deploy, not on more code.
+
 The fork implements `/park` + `/unpark` (move the wav2vec2 model to CPU RAM and
 back), so ASS uses `evict = "park"`: a swap costs a PCIe copy, not a container
 cold start. `no_preload = true` keeps the aligner out of "preload all" — it's a
