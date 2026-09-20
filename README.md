@@ -66,7 +66,9 @@ curl -s localhost:2645/v1/jobs/<job_id>       # poll until "succeeded"
 curl -o vocals.wav localhost:2645/v1/jobs/<job_id>/result/vocals
 ```
 
-That's the whole loop. No GPU? Develop against mock backends instead:
+That's the whole loop. The full HTTP surface — every endpoint, the async job
+envelope, artifacts, and the operator controls — is in the
+[**API reference**](docs/api.md). No GPU? Develop against mock backends instead:
 `./scripts/build-mockbackend.sh` then `./run.sh -config ass.dev.toml`. Full
 deployment detail and the park/unpark validation steps live in
 [docs/deploy.md](docs/deploy.md); every config knob is in
