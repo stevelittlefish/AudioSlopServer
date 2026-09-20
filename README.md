@@ -60,11 +60,20 @@ cd AudioSlopServer
 
 sudo mkdir -p /srv/ass/cache /srv/ass/data   # persistent: model cache + job store
 docker compose build                         # build ass:local (also used to list images)
-./pull-services.sh                           # pull backend images from GHCR
+./pull-services.sh                           # pull backend images from GHCR (SLOW — see below)
 docker compose up -d                         # start ASS on :2645
 
 curl -s localhost:2645/health                # {"status":"ok","service":"ASS"}
 ```
+
+> ☕ **`pull-services.sh` will take a while — go make a cup of tea** (or go catch
+> some Pokémon, whatever fills a few minutes). These are
+> Python + CUDA + PyTorch images, and each one is *big* (the CUDA base and the
+> torch/cuDNN/cuBLAS libraries alone run several GB **per image**). Pulling all
+> the backends means tens of GB over the wire on a cold machine. It's a one-time
+> cost — they're cached after the first pull, and images that share a CUDA base
+> layer only download it once. Not hung, just fat. (More on why in
+> [docs/measurements.md](docs/measurements.md).)
 
 Submit a job (ASS brings the backend up on demand, harvests the results, and
 serves them from its own store):
@@ -77,10 +86,18 @@ curl -s localhost:2645/v1/jobs/<job_id>       # poll until "succeeded"
 curl -o vocals.wav localhost:2645/v1/jobs/<job_id>/result/vocals
 ```
 
-That's the whole loop. The full HTTP surface — every endpoint, the async job
-envelope, artifacts, and the operator controls — is in the
-[**API reference**](docs/api.md). No GPU? Develop against mock backends instead:
-`./scripts/build-mockbackend.sh` then `./run.sh -config ass.dev.toml`.
+That's the whole loop. Every endpoint, the async job envelope, artifacts, the
+operator controls, **and a copy-paste `curl` for every service's request body**
+are in the [**API reference**](docs/api.md).
+
+**Don't want to read the docs?** With ASS running, open
+`http://localhost:2645/test/<service>` (e.g. `/test/yue`), fill in the form, and
+hit the **JSON** tab — that's the exact request body ASS sends, ready to paste
+into your own code. The forms are the source of truth; the API reference is
+generated from them.
+
+No GPU? Develop against mock backends instead: `./scripts/build-mockbackend.sh`
+then `./run.sh -config ass.dev.toml`.
 
 ## Platform support
 
@@ -102,7 +119,7 @@ Genuinely — that's exactly the kind of contribution we want. See
 
 | Doc | What's in it |
 |---|---|
-| [**API reference**](docs/api.md) | Every endpoint, the async job envelope, artifacts, operator controls. Start here if you're writing a client. |
+| [**API reference**](docs/api.md) | Every endpoint, the async job envelope, artifacts, operator controls, **and a per-service request format with a copy-paste `curl` for each**. Start here if you're writing a client (human or coding agent). |
 | [**Configuration**](docs/configuration.md) | The full TOML surface: global tables, per-service keys, LoRAs, bind mounts, the HF token. |
 | [**Deploy & end-to-end test**](docs/deploy.md) | Running ASS against real backends on the GPU box, all in Docker; the park/unpark validation steps. |
 | [**Scheduling**](docs/scheduling.md) | How the arbiter decides who gets the GPU, who waits, and for how long. Read before touching the arbiter. |

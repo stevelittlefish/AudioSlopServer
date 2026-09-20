@@ -197,23 +197,206 @@ Each single-backend op returns `{ "status": "ok", "service": "...", "residency":
 
 ---
 
-## Services
+## Request formats per service
 
-Which backends exist is **configured in TOML**, not baked in — so your instance's
-list may differ. Typical services and their verbs:
+Every service uses the **same** submit/poll/download loop above. Only the **body
+of the submit** differs, and this section spells out each one exactly. Which
+backends your instance actually has is configured in TOML, so the list may vary.
 
-| Service | Verb | Does | Typical input | Typical artifacts |
-|---|---|---|---|---|
-| `demucs` | `separate` | Source separation | audio file | `vocals`, `no_vocals` (+ `drums`, `bass`) |
-| `whisper` | `transcribe` | Transcription | audio file | transcript (text/JSON) |
-| `stableaudio` | `generate` | Text-to-audio (Stable Audio 3) | JSON prompt | `audio.wav` (+ spectrogram) |
-| `acestep` | `generate` | Music generation (ACE-Step) | JSON prompt | `audio` |
-| `yue` | `generate` | Music generation (YuE 2) | JSON prompt | FLAC + `score.abc` + lyrics |
-| `aligner` | `align` | Forced alignment | audio + text | `alignment.json` |
+> 🐍 **Don't want to read? Let the app write the request for you.** With ASS
+> running, open **`http://localhost:2645/test/<service>`** (e.g. `/test/yue`),
+> fill in the form, and click the **JSON** tab — that's the *exact* body ASS
+> sends. Copy it straight into a `curl`. The forms are the source of truth these
+> docs are generated from; when in doubt, trust the JSON tab.
 
-The exact request body for each is defined by that backend — query
-`GET /v1/backends/{service}/info` for its capabilities, or check the backend's
-own docs. ASS's job is the envelope, not the per-service knobs.
+### How bodies are encoded
+
+There are two wire formats. A service uses one or the other (noted per service):
+
+- **JSON** — `Content-Type: application/json`, body is the params object. Used by
+  services that take no file (text-to-audio generators).
+- **Multipart** — `multipart/form-data` with **one JSON part carrying all the
+  params**, plus a part per uploaded file. The JSON part is named `params` for
+  most services, `param_obj` for ACE-Step (noted below). Used by anything that
+  takes an audio file.
+
+All examples assume ASS on `localhost:2645`. Fields not listed are rejected by
+the backends (extras → `422`), so send only what's documented.
+
+---
+
+### `demucs` — source separation (`separate`)
+
+**Multipart** (`params` JSON part + `audio` file). Splits a mix into stems.
+
+| Field | Type | Notes |
+|---|---|---|
+| `audio` | file | **Required.** The mixed track (multipart file part, not in the JSON). |
+| `mode` | string | `two-stem` (vocals + instrumental) or `four-stem` (vocals/drums/bass/other). |
+| `file_format` | string | `wav` \| `flac` \| `mp3`. |
+| `shifts` | int | Test-time augmentation passes (default 1). Higher = slower, slightly better. |
+| `overlap` | float | Chunk overlap, 0–0.99 (default 0.25). |
+
+```sh
+curl -X POST http://localhost:2645/v1/demucs/jobs \
+  -F 'params={"mode":"two-stem","file_format":"wav"}' \
+  -F 'audio=@song.wav'
+```
+
+Artifacts: `vocals`, `no_vocals` (two-stem); `vocals`, `drums`, `bass`, `other`
+(four-stem).
+
+---
+
+### `aligner` — forced alignment (`align`)
+
+**Multipart** (`params` JSON part + `audio` file). Lines up sung/spoken words to
+timestamps.
+
+| Field | Type | Notes |
+|---|---|---|
+| `audio` | file | **Required.** The audio to align. |
+| `text` | string | **Required.** The words, keeping original line breaks. |
+| `language` | string | ISO code, e.g. `en`. Optional (auto if omitted). |
+
+```sh
+curl -X POST http://localhost:2645/v1/aligner/jobs \
+  -F 'params={"text":"Morning light on an empty street","language":"en"}' \
+  -F 'audio=@vocals.wav'
+```
+
+Artifact: `alignment.json` (per-word timings). Standalone clients can also call
+the backend's synchronous `/align` directly — see [aligner.md](aligner.md).
+
+---
+
+### `yue` — music generation, YuE2 (`generate`)
+
+**JSON.** A style description + lyrics become an ABC score, then a full song.
+
+| Field | Type | Notes |
+|---|---|---|
+| `lyrics` | string | **Required.** Segment with tags like `[verse]`, `[chorus]`. |
+| `style` | string | Genre / instruments / mood / tempo, natural language. |
+| `stage` | string | `audio` (full song) or `plan` (ABC score only — fast). |
+| `cot` | string | Chain-of-thought planning: `full` \| `melody` \| `off`. Omit for server default. |
+| `file_format` | string | `flac` \| `wav`. |
+| `seed` | int | Omit for a random song each run. |
+| `cfg_scale` | float | Guidance scale (0–20). Omit for default. |
+| `abc` | string | Provide an ABC score directly (advanced). |
+| `abc_sampling`, `semantic_sampling` | object | Advanced sampler overrides (JSON objects). |
+
+```sh
+curl -X POST http://localhost:2645/v1/yue/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "style":  "acoustic pop, warm piano, soft female vocal, 90 bpm",
+    "lyrics": "[verse]\nMorning light on an empty street\n[chorus]\nBut I will carry on",
+    "stage":  "audio",
+    "file_format": "flac"
+  }'
+```
+
+Artifacts: `audio.flac`, `score.abc`, `lyrics.txt`, plus metadata.
+
+---
+
+### `stableaudio` — text-to-audio, Stable Audio 3 (`generate`)
+
+**Multipart** (`params` JSON part; a file part only for the variation/inpaint
+workflows). Three workflows, selected by which fields you send.
+
+Common params:
+
+| Field | Type | Notes |
+|---|---|---|
+| `prompt` | string | The text prompt. |
+| `seconds_total` | int | Clip length (default = model max). |
+| `steps` | int | Diffusion steps. |
+| `seed` | int | `-1` = random. |
+| `cfg_scale` | float | Guidance. Omit for model default. |
+| `negative_prompt` | string | What to avoid. |
+| `batch_size` | int | Clips per run. |
+| `file_format` | string | e.g. `wav`, `flac`. |
+| `return_spectrogram` | bool | Also emit a spectrogram image. |
+| `loras` | array | `[{"strength": 0.8}]` — indexes match the load order in `/v1/backends/stableaudio/info`. |
+
+- **Text-to-audio** (no file): send the common params as the `params` part.
+- **Variation** (restyle an init clip): add the init audio file + `init_noise_level` (0.01–1).
+- **Inpaint** (regenerate a masked span): add the file + `inpaint_mask_starts` / `inpaint_mask_ends` (comma-separated seconds).
+
+```sh
+# text-to-audio
+curl -X POST http://localhost:2645/v1/stableaudio/jobs \
+  -F 'params={"prompt":"warm analog ambient pad, slow evolving, spacious","seconds_total":30,"seed":-1}'
+```
+
+Artifacts: the audio clip (+ `spectrogram` when requested).
+
+---
+
+### `acestep` — music generation, ACE-Step 1.5 XL (`generate`)
+
+Task selected by **`task_type`**. `text2music` is **JSON**; the source-clip tasks
+(`cover`, `repaint`, `extract`) are **multipart with the JSON part named
+`param_obj`** plus a `ctx_audio` file.
+
+Common params:
+
+| Field | Type | Notes |
+|---|---|---|
+| `task_type` | string | **Required.** `text2music` \| `cover` \| `repaint` \| `extract`. |
+| `prompt` | string | Caption / description. |
+| `lyrics` | string | Optional; `[verse]` / `[chorus]` tags. |
+| `vocal_language` | string | e.g. `en` (default). |
+| `audio_format` | string | `mp3` \| `flac` \| `wav` \| `wav32` \| `opus` \| `aac`. |
+| `audio_duration` | int | Seconds; omit for auto. |
+| `inference_steps` | int | Default ~8 (turbo). |
+| `guidance_scale` | float | Default ~7.0. |
+| `seed` | int | `-1` = random (also sets `use_random_seed`). |
+| `batch_size` | int | Songs per run. |
+| `thinking` | bool | 5Hz LM plans the codes first. |
+| `use_cot_caption` | bool | LM rewrites the caption. |
+
+Source-clip extras — **`cover`**: `audio_cover_strength`, `cover_noise_strength`;
+**`repaint`**: `repainting_start`, `repainting_end`, `repaint_mode`
+(`balanced`\|`conservative`\|`aggressive`), `repaint_strength`; **`extract`**:
+`track_name`, `extract_codes_only`.
+
+```sh
+# text2music (JSON)
+curl -X POST http://localhost:2645/v1/acestep/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "task_type": "text2music",
+    "prompt": "dreamy synth-pop, warm analog pads, female vocals, 90 bpm",
+    "lyrics": "[verse]\n...",
+    "audio_format": "mp3",
+    "seed": -1
+  }'
+
+# cover (multipart — note the param_obj part name + ctx_audio file)
+curl -X POST http://localhost:2645/v1/acestep/jobs \
+  -F 'param_obj={"task_type":"cover","prompt":"lo-fi remix","audio_cover_strength":0.8}' \
+  -F 'ctx_audio=@source.mp3'
+```
+
+Artifacts: the rendered audio plus its 5Hz code blueprint, lyrics, and metadata.
+
+---
+
+### `whisper` — transcription (`transcribe`)
+
+**Multipart** (`params` JSON part + `audio` file). Not yet conformed/enabled on
+every instance — check `GET /v1/backends` for whether it's present, and
+`GET /v1/backends/whisper/info` for its options.
+
+---
+
+**Rule of thumb for anything not covered here:** `GET /v1/backends/{service}/info`
+reports what the backend supports, and `http://localhost:2645/test/{service}`'s
+JSON tab shows the exact body for it. ASS forwards your body verbatim, so those
+two always reflect reality.
 
 ---
 

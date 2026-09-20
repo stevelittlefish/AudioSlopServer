@@ -122,14 +122,11 @@ function formToParams(root){
   const cot = val(root,"cot"); if (cot) p.cot = cot;               // "" = server default -> omit
   const ff = val(root,"file_format"); if (ff) p.file_format = ff;
 
-  // Blank seed should mean "different every time". It doesn't at the backend:
-  // YuE's SongRequest defaults a missing seed to the CONSTANT 831001, so an
-  // omitted seed renders the SAME song byte-for-byte on every submit. Until the
-  // yue-inference-server fork randomizes on a missing seed, generate one here so
-  // blank actually rolls the dice — and you can see which seed you got.
-  let seed = numOpt(root,"seed");
-  if (seed===undefined) seed = Math.floor(Math.random() * 2**52); // safe < 2**63, plenty of entropy
-  p.seed = seed;
+  // Blank seed = omit it and let the backend roll the dice. The yue-inference-server
+  // fork now randomizes on a missing seed (it used to default to a constant, so a
+  // blank field rendered the same song every time — hence the old client-side
+  // workaround, now gone).
+  const seed = numOpt(root,"seed"); if (seed!==undefined) p.seed = seed;
   const cfg = numOpt(root,"cfg_scale"); if (cfg!==undefined) p.cfg_scale = cfg;
 
   const abc = val(root,"abc"); if (abc) p.abc = abc;
