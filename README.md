@@ -21,20 +21,31 @@ ASS runs all of these disparate audio services on a **single GPU**, swapping mod
 
 No multibillionaire budget required.
 
-### The Web Console (planned)
+![The ASS admin console — every backend's live residency (pinned / parked / stopped), leases and last-used, with park/unpark/stop buttons and a real-jobs VRAM budget rollup.](docs/images/dashboard.png)
 
-ASS is API-first, but it will also ship a small, no-nonsense **web console** for
-the humans who run it:
+### The Web Console
+
+ASS is API-first, but it also ships a small, no-nonsense **web console** for the
+humans who run it:
 
 - **An admin panel** — see every backend's live state (pinned / parked /
   sleeping / stopped), its queue depth and last-used time, and drive it by hand:
   park, unpark, stop, or an **"unload everything"** button to hand the whole GPU
-  back at once.
+  back at once. It also charts VRAM usage measured from real jobs against each
+  service's budget, so you can catch a model creeping over its reservation.
 - **A test page per service** — submit a real job, watch it run, and play or
   download the artifacts, straight from the browser. One honest replacement for
   the ten mismatched Gradio apps these AI services normally drag along — because
   every ASS backend speaks the same job envelope, the test harness is built
   once and every service gets a page for free.
+
+![A per-service test page — here YuE's song generator, with style and lyrics fields, a Form/JSON toggle, and Run.](docs/images/test-page.png)
+
+Results render inline: audio artifacts get a waveform player, JSON/text get a
+viewer, and everything gets a one-click download — each tagged with its `kind`
+(audio / metadata / lyrics / …) and size.
+
+![A finished job's artifacts — an audio.flac with an inline waveform player, plus config.json, token dumps and lyrics, each downloadable.](docs/images/results.png)
 
 No SPA, no framework, no build step (see the Philosophy): plain server-rendered
 HTML with a sprinkle of vanilla JS, one URL per page. See [TODO.md](TODO.md).
