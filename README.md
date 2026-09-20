@@ -91,7 +91,7 @@ honest about what's actually been run:
 | Platform | Status |
 |---|---|
 | **Linux** | ✅ **Tested.** This is where ASS is developed and deployed (the GPU boxes are Linux + NVIDIA + nvidia-container-toolkit). |
-| **macOS** | 🤷 **Probably works** for the ASS binary and the dev/mock flow. The catch is GPU backends: no NVIDIA/CUDA on a Mac, so real audio models won't run — but the orchestration and API should be fine. Untested. |
+| **macOS** | ❌ **Doesn't work** — no NVIDIA GPU, so the CUDA backends can't run. The ASS binary and the mock/dev flow may be fine, but you can't actually generate anything without an NVIDIA card. |
 | **Windows** | ❓ **Completely untested.** Maybe it works under **WSL2** (Linux Docker + GPU passthrough), maybe not. Nobody's tried. |
 
 **If you get it working on Windows (or clean up the Mac story), raise a PR!**
