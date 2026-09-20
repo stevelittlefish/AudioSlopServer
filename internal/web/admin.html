@@ -103,6 +103,7 @@
   /* Over-budget: this backend's own vram_pinned_mb is bigger than the whole GPU
      budget, so it can't be guaranteed to fit. ASS loads it anyway (evict-all +
      hope), so it's a warning, not an error — amber, not red. */
+  .warn[hidden] { display:none; }
   .warn {
     display:flex; align-items:flex-start; gap:8px; margin:-4px 0 14px;
     padding:9px 11px; border-radius:10px;
