@@ -7,12 +7,13 @@ your life.
 (Also the closest thing Claude has to long-term memory across sessions, so keep
 it honest — if it's done, tick it; if it's abandoned, say so.)
 
-> ✅ **FIXNOW code done** — all four repos committed + pushed:
-> [`FIXNOW-cache-and-dockerfiles.md`](FIXNOW-cache-and-dockerfiles.md) (per-service
-> cache + one shared HF token, deps-before-source Dockerfiles, SA3 announces its
-> weight download, ACE-Step defaults verified). **Remaining human steps:** cut the
-> three fork releases (`make_release.sh v1.1.0 …`) and pull/smoke-test on the box —
-> the full runbook is in [`DEPLOY.md`](DEPLOY.md).
+> ✅ **Cache/Dockerfile cleanup done** — shipped across all four repos: per-service
+> weight cache (`/cache/<service>/…`) + one shared HF token via `HF_TOKEN_PATH`,
+> deps-before-source Dockerfiles (no more multi-GB re-push on a code change), SA3
+> announces its weight download instead of looking hung, ACE-Step defaults verified
+> against the old known-good compose. Config side is in
+> [docs/configuration.md](docs/configuration.md); running against real backends on
+> the box is in [docs/deploy.md](docs/deploy.md).
 
 ## Done — Spec
 
