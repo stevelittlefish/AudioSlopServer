@@ -99,6 +99,26 @@ generated from them.
 No GPU? Develop against mock backends instead: `./scripts/build-mockbackend.sh`
 then `./run.sh -config ass.dev.toml`.
 
+## Security — there is none (by design)
+
+> ⚠️ **ASS has NO authentication, NO authorization, and NO TLS. It is built for
+> private LAN / VPN deployments ONLY. Never expose it to the public internet.**
+
+This is a deliberate choice, not a missing feature — ASS is a single-user tool
+that orchestrates your own GPU on your own network. Concretely:
+
+- Every endpoint is **wide open** to anyone who can reach the port. There's no
+  token, no login, nothing.
+- It binds **all interfaces** (`0.0.0.0`) by default, and the operator controls
+  (`park` / `stop` / `unload-all`) are real "free/kill the GPU" buttons — anyone
+  who can reach ASS can start and stop your containers and submit unlimited jobs.
+- ASS drives the **host Docker socket**, which is root-equivalent on that box.
+
+So: run it behind your firewall, on your LAN, or over something like Tailscale /
+WireGuard. Setting `web.enabled = false` hides the operator console but does
+**not** add auth to the job API. **Do not put ASS on the open internet.** If your
+threat model needs auth, that's a fork you'll have to write.
+
 ## Platform support
 
 ASS is a small Go binary that talks to the **host Docker daemon** — it needs no
