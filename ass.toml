@@ -14,18 +14,16 @@ ram_budget_mb = 96000
 enabled = true         # real server has a card; hand it to whichever backend is
                        # resident. (The dev box sets this false in ass.dev.toml.)
 device = 0             # the one card ASS is allowed to monopolize
-# The MB ASS may actually put on this card, and the real gate now: the arbiter
-# sums each pinned backend's vram_pinned_mb + each parked backend's park tax and
-# keeps the total under this. GPU 0 is SHARED, so this is the card MINUS what ASS
-# can't touch: 24000 (3090) − ~2100 (wyoming-whisper, permanent) − ~400 (driver)
-# ≈ 21500. Not the full 24GB. See docs/measurements.md.
+# The MB ASS may actually put on this card, and the real gate: the arbiter sums
+# each pinned backend's vram_pinned_mb + each parked backend's park tax and keeps
+# the total under this. GPU 0 is SHARED, so this is the card MINUS what ASS can't
+# touch: 24000 − ~2100 (wyoming-whisper, permanent) − ~400 (driver) ≈ 21500.
 vram_budget_mb = 21500
 # max_resident is a secondary hard cap on how many backends may be pinned at once.
 # 0 = unlimited: let vram_budget_mb decide (the whole point — pack as many as fit).
 max_resident = 0
 context_tax_mb = 400   # default parked VRAM tax for a park backend that hasn't set
-                       # its own vram_parked_mb. Measured: demucs holds ~354 MiB
-                       # parked on a 3090 (weights freed, CUDA context remains).
+                       # its own vram_parked_mb (weights freed, CUDA context remains).
 
 [server]
 addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex).
@@ -51,9 +49,8 @@ verb  = "separate"
 evict = "park"          # small enough to keep parked in RAM
 priority = 60           # higher = evicted LAST. demucs is a cheap, frequently-used
                         # preprocessing step, so keep it hot over the heavy generators.
-vram_pinned_mb = 1200   # MEASURED peak: 554 MiB via /v1/info telemetry on the 3090.
-                        # demucs is tiny; 1200 is generous headroom.
-vram_parked_mb = 400    # MEASURED: 354 MiB parked on a 3090 (see docs/measurements.md).
+vram_pinned_mb = 1200   # MEASURED peak: 554 MiB. demucs is tiny; 1200 is headroom.
+vram_parked_mb = 400    # MEASURED: 354 MiB parked.
 ram_reserve_mb = 1000
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 4096      # demucs wants elbow room (compose sets 4gb)
@@ -85,12 +82,10 @@ evict = "park"          # cold start reloads a multi-GB checkpoint + flash-attn,
                         # peasant box (tight RAM) should switch this to "stop".
 priority = 50           # the default-ish middle. Evicted before demucs, after the
                         # heavier generators aren't around to throw off instead.
-vram_pinned_mb = 6500   # MEASURED peak: 5388 MiB via /v1/info telemetry on the 3090.
-                        # Was at 90% of the old 6000 — nudged up for headroom.
-vram_parked_mb = 2000   # MEASURED: 1948 MiB parked on a 3090 — the HEAVIEST park tax
-                        # of the four (flash-attn + larger workspaces). See measurements.md.
-ram_reserve_mb = 8000   # rough parked-in-RAM cost of the medium model; UNMEASURED
-                        # — refine once we run it on the box (see docs/measurements.md).
+vram_pinned_mb = 6500   # MEASURED peak: 5388 MiB.
+vram_parked_mb = 2000   # MEASURED: 1948 MiB parked — the heaviest park tax here
+                        # (flash-attn + larger workspaces).
+ram_reserve_mb = 8000   # parked-in-RAM cost of the medium model; UNMEASURED.
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 8192      # SA3 wants elbow room (its compose sets 8gb)
 # The gated weights (stabilityai/stable-audio-3-medium) authenticate via the ONE
@@ -139,18 +134,14 @@ evict = "park"          # ACE-Step is the backend park pays off MOST for: its co
                         # VAE/text-enc/LM in CPU RAM, park only has ONE big thing to
                         # move: the DiT. So unpark ~= a single 9GB PCIe copy (~1s,
                         # SA3 territory) buys back a 10-60s reload. See the ACE-Step
-                        # park analysis in docs/measurements.md. Context tax is the
-                        # one number still to confirm on the box (expected 0.5-2GB;
-                        # fits GPU 0's ~21.5GB usable with room to spare).
+                        # park analysis in docs/measurements.md.
 priority = 30           # a heavy generator: cheaper to the swap decision than the
                         # small always-on services, so it gets thrown off before them.
-vram_pinned_mb = 16500  # MEASURED peak: 16,154MB
-vram_parked_mb = 700    # MEASURED: 616 MiB parked on a 3090 — SMALL, despite the XL
-                        # DiT. OFFLOAD_TO_CPU already keeps most weights off the card, so
-                        # park leaves little behind. (Predicted 0.5-2GB; landed low.)
+vram_pinned_mb = 16500  # MEASURED peak: 16,154 MiB.
+vram_parked_mb = 700    # MEASURED: 616 MiB parked — small despite the XL DiT, because
+                        # OFFLOAD_TO_CPU already keeps most weights off the card.
 ram_reserve_mb = 14000  # parked-in-RAM estimate: DiT ~9GB + LM 1.7B ~3.5GB + Qwen
-                        # text-enc ~1.2GB + VAE ~0.3GB. Still UNMEASURED — refine on
-                        # the box (see docs/measurements.md method).
+                        # text-enc ~1.2GB + VAE ~0.3GB. UNMEASURED.
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 8192      # generation wants elbow room
 # This backend reads ACESTEP_API_PORT, not the generic PORT ASS injects, so pin it
@@ -194,20 +185,13 @@ port  = 5340            # YuE. ASS maps host:port -> container:port on the same
 verb  = "generate"      # POST /v1/generate; returns audio.flac + score.abc + the
                         # lyrics + result/config metadata as a mixed-kind artifacts[]
 evict = "park"          # YuE2-3B has a heavy cold start (3B model reload + CUDA
-                        # re-init), so like ACE-Step it should earn the fast park/
-                        # unpark swap. /park + /unpark ARE implemented. Parked-VRAM
-                        # (context tax) and unpark latency are still UNMEASURED —
-                        # confirm on the box (docs/measurements.md) and drop back to
-                        # "stop" only if the numbers don't justify holding it in RAM.
+                        # re-init), so like ACE-Step it earns the fast park/unpark
+                        # swap. Peasant box: drop to "stop".
 priority = 20           # low: the heaviest generator, happy to give up the card the
                         # moment anything else wants it (only the aligner ranks lower).
-no_preload = true       # don't warm YuE on "preload all": it's a big RAM/VRAM hog and
-                        # not every session uses it — let it cold-start on first demand.
-vram_pinned_mb = 10500  # MEASURED peak: 9486 MiB via /v1/info telemetry on the 3090 —
-                        # the old 8000 was 19% too low. Set above the observed peak.
-vram_parked_mb = 1100   # MEASURED: 1042 MiB parked on a 3090. See docs/measurements.md.
-ram_reserve_mb = 10000  # rough parked-in-RAM guess for the 3B model; UNMEASURED —
-                        # refine on the box before trusting it.
+vram_pinned_mb = 10500  # MEASURED peak: 9486 MiB.
+vram_parked_mb = 1100   # MEASURED: 1042 MiB parked.
+ram_reserve_mb = 10000  # parked-in-RAM estimate for the 3B model; UNMEASURED.
 idle_ttl = "0"          # never reclaim parked RAM on the big server
 shm_size_mb = 8192      # generation wants elbow room
 # This backend reads YUE_API_PORT, not the generic PORT ASS injects, so pin it.
@@ -229,16 +213,12 @@ evict = "park"         # /park + /unpark implemented (model -> CPU RAM and back)
                        # harvests the JSON before parking. Peasant box: switch to "stop".
 priority = 10          # very low: a quick utility step, happy to be thrown off the
                        # card the moment anything else wants it. Evicted first of all.
-no_preload = true      # keep it out of "preload all": now that it's parkable this DOES
-                       # bite — don't warm the aligner into RAM eagerly, it's a big
-                       # reserve and not every session aligns. Cold-starts on first job.
-vram_pinned_mb = 14000 # ESTIMATE, UNMEASURED: headroom over a historical ~9.9 GB
-                       # reserved spike on a 10-minute track. One language model
-                       # resident; long audio can still exceed this reservation.
-vram_parked_mb = 500   # MEASURED: 332 MiB parked on a 3090 (ass-aligner, 2026-09-19 —
-                       # just the CUDA context, weights on CPU). Kept at 500 for headroom
-                       # and to match gpu.context_tax_mb, which this falls back to if
-                       # deleted. See docs/measurements.md.
+no_preload = true      # keep it out of "preload all": a big reserve, and not every
+                       # session aligns. Cold-starts on first job.
+vram_pinned_mb = 14000 # ESTIMATE, UNMEASURED: headroom over a ~9.9 GB reserved spike
+                       # on a 10-minute track. Long audio can still exceed this.
+vram_parked_mb = 500   # MEASURED: 332 MiB parked (just the CUDA context). Kept at 500
+                       # for headroom and to match gpu.context_tax_mb, its fallback.
 ram_reserve_mb = 6000  # ESTIMATE, UNMEASURED: model, decoded audio, alignment scratch
 idle_ttl = "0"
 shm_size_mb = 2048
