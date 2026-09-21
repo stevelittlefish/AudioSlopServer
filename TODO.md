@@ -563,3 +563,28 @@ temp upload after the job; ASS buffers uploads in memory, not disk.)
       flag so cheap always-useful backends (e.g. an aligner) stay resident
       indefinitely. Depends on the deferred VRAM budgeting + real weight sizes
       above.
+
+## ACE-Step: switch to the higher-quality xl-sft DiT
+
+Moving ACE-Step off `xl-turbo` (8-step, no CFG) to `xl-sft` (50-step + CFG) —
+same 4B decoder, "Very High" quality, ~10x the compute per song.
+
+- [x] **Fork: derive inference_steps + CFG from the loaded model family.** In
+      `references/ACE-Step-1.5-inference-server`: `inference_steps`/`guidance_scale`
+      now default to `None` (API request model, GenerationParams, the multipart
+      builder) and get resolved in `GenerateMusicMixin.generate_music` — turbo
+      8/1.0, sft 50/7.0, base 32/7.0 — mirroring the existing `_resolve_dcw_enabled`
+      pattern. Canonical numbers live in `gpu_config._FAMILY_INFER_DEFAULTS` +
+      `get_model_family_from_path`. A caller that omits steps/CFG no longer gets
+      turbo's settings applied to sft; explicit values still win.
+- [x] **ass.toml: `ACESTEP_CONFIG_PATH=acestep-v15-xl-sft`** on the acestep service.
+- [ ] **Ship the fork image.** The auto-derivation only reaches the server once the
+      inference-server repo is committed + tagged (`v*`) → CI builds → re-pull on
+      the box. Until then the OLD image ignores the derivation and would run sft at
+      8 steps. Order: tag fork FIRST, pull, THEN the config-path flip bites.
+- [ ] **Run the fork's test suite with torch** (this dev box has neither torch nor
+      pytest). The touched unit tests all pass explicit step counts so should be
+      fine, but verify before tagging.
+- [ ] **Re-measure VRAM on ai.lemon.com.** `vram_pinned_mb=16500` is a MEASURED
+      *turbo* peak; CFG doubles the DiT forward pass, so sft will peak higher.
+      Update the budget from the real `peak_mb` after a render.
