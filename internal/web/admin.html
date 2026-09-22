@@ -48,6 +48,14 @@
   .brand .sub b { color:var(--ink); font-weight:600; }
   .spacer { flex:1; }
 
+  nav.tabs { display:flex; gap:4px; }
+  nav.tabs a {
+    font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-dim);
+    padding:6px 13px; border-radius:8px; border:1px solid transparent; transition:.12s ease;
+  }
+  nav.tabs a:hover { color:var(--ink); background:var(--panel2); }
+  nav.tabs a[aria-current="page"] { color:var(--accent); border-color:var(--accent-dim); background:rgba(94,224,176,.06); }
+
   .liveblip { display:inline-flex; align-items:center; gap:8px; color:var(--ink-faint); font-size:12px; font-family:var(--mono); }
   .liveblip .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent); animation:pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
@@ -243,6 +251,10 @@
     <span class="logo">ass</span>
     <span class="sub"><b>Audio Slop Server</b> · admin console</span>
   </div>
+  <nav class="tabs">
+    <a href="/admin" aria-current="page">Backends</a>
+    <a href="/jobs">Jobs</a>
+  </nav>
   <span class="spacer"></span>
   <span class="liveblip"><span class="dot"></span><span id="live">connecting…</span></span>
 </header>

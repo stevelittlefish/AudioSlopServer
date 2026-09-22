@@ -64,6 +64,7 @@ func (a *API) Handler() http.Handler {
 	// GPU — but it will make the backend resident to answer.
 	mux.HandleFunc("GET /v1/backends/{service}/info", a.handleBackendInfo)
 	mux.HandleFunc("POST /v1/{service}/jobs", a.handleSubmit)
+	mux.HandleFunc("GET /v1/jobs", a.handleListJobs)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.handleJob)
 	mux.HandleFunc("GET /v1/jobs/{id}/result", a.handleResultList)
 	mux.HandleFunc("GET /v1/jobs/{id}/result/{name}", a.handleResultFile)
@@ -122,6 +123,25 @@ func (a *API) handleBackendInfo(w http.ResponseWriter, r *http.Request) {
 type jobView struct {
 	store.Job
 	Artifacts []store.Artifact `json:"artifacts"`
+}
+
+// handleListJobs returns a page of jobs (newest first) with their artifacts, for
+// the jobs browser page. ?limit= and ?offset= page through the history; total
+// rides along so the UI can render "showing X–Y of Z".
+func (a *API) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if limit <= 0 {
+		limit = 25
+	}
+	jobs, total, err := a.store.ListJobs(r.Context(), limit, offset)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "listing jobs: %v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"jobs": jobs, "total": total, "limit": limit, "offset": offset,
+	})
 }
 
 func (a *API) handleJob(w http.ResponseWriter, r *http.Request) {

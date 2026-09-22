@@ -229,6 +229,77 @@ func (s *Store) GetJob(ctx context.Context, id string) (Job, []Artifact, error) 
 	return j, arts, nil
 }
 
+// JobWithArtifacts is a job plus the artifacts it produced — the unit the jobs
+// browser page renders one row per.
+type JobWithArtifacts struct {
+	Job
+	Artifacts []Artifact `json:"artifacts"`
+}
+
+// ListJobs returns a page of jobs, newest first, each with its artifacts, plus
+// the total job count so the UI can page. limit is clamped to something sane so
+// a bad ?limit=999999 can't ask the box to marshal the whole history at once.
+func (s *Store) ListJobs(ctx context.Context, limit, offset int) ([]JobWithArtifacts, int, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, service, state, error, created_at, started_at, finished_at
+		 FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := []JobWithArtifacts{}
+	for rows.Next() {
+		var (
+			j                 Job
+			created           int64
+			started, finished sql.NullInt64
+		)
+		if err := rows.Scan(&j.ID, &j.Service, &j.State, &j.Error, &created, &started, &finished); err != nil {
+			return nil, 0, err
+		}
+		j.CreatedAt = time.Unix(0, created)
+		if started.Valid {
+			t := time.Unix(0, started.Int64)
+			j.StartedAt = &t
+		}
+		if finished.Valid {
+			t := time.Unix(0, finished.Int64)
+			j.FinishedAt = &t
+		}
+		out = append(out, JobWithArtifacts{Job: j})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// Artifacts in a second pass: the rows cursor above holds the single
+	// connection, so we can't query per-job while iterating it.
+	for i := range out {
+		arts, err := s.artifactsFor(ctx, out[i].ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		out[i].Artifacts = arts
+	}
+	return out, total, nil
+}
+
 // GetArtifact returns one named artifact's metadata (including its on-disk path).
 func (s *Store) GetArtifact(ctx context.Context, jobID, name string) (Artifact, error) {
 	var a Artifact

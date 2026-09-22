@@ -22,7 +22,7 @@ import (
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 )
 
-//go:embed admin.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html test-aligner.html assets/test.css assets/test-common.js assets/logo.svg assets/logo-bars.svg
+//go:embed admin.html jobs.html test.html test-demucs.html test-stableaudio.html test-acestep.html test-yue.html test-aligner.html assets/test.css assets/test-common.js assets/logo.svg assets/logo-bars.svg
 var assets embed.FS
 
 // servicePages maps a configured service name to its bespoke test page. A
@@ -48,6 +48,7 @@ func Register(mux *http.ServeMux, cfg *config.Config) {
 	// swallowing every unmatched path into a catch-all.
 	mux.Handle("GET /{$}", http.RedirectHandler("/admin", http.StatusFound))
 	mux.Handle("GET /admin", admin)
+	mux.Handle("GET /jobs", page("jobs.html"))
 
 	// Shared page assets (styling + the common runtime). Served from the same
 	// embed FS; content types are set explicitly since we don't rely on the

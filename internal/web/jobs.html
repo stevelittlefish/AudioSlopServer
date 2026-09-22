@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en" data-page="jobs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASS · Jobs</title>
+<link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+<style>
+  :root {
+    --bg:#0b0d10; --bg2:#12151a; --panel:#151920; --panel2:#1b2028;
+    --line:#242b35; --line2:#2f3945;
+    --ink:#e7ecf3; --ink-dim:#8b97a7; --ink-faint:#5b6675;
+    --accent:#5ee0b0; --accent-dim:#2b6b57;
+    --succeeded:#5ee0b0; --running:#67b8ff; --queued:#f2c14e; --failed:#ff6b6b;
+    --danger:#ff6b6b; --danger-dim:#5a2626;
+    --radius:14px;
+    --mono:ui-monospace,"DejaVu Sans Mono","JetBrains Mono","Cascadia Code","Liberation Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; }
+  body {
+    background:
+      radial-gradient(900px 500px at 85% -10%, #16211d 0%, transparent 60%),
+      radial-gradient(700px 500px at -5% 0%, #1a1720 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; min-height:100vh; line-height:1.45;
+  }
+  a { color:var(--accent); text-decoration:none; }
+
+  header.top {
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+    padding:22px 28px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);
+  }
+  .brand { display:flex; align-items:baseline; gap:12px; }
+  .brand .logomark { width:28px; height:28px; align-self:center; display:block; user-select:none; filter:drop-shadow(0 0 10px rgba(94,224,176,.35)); }
+  .brand .logo {
+    font-family:var(--mono); font-weight:700; font-size:30px;
+    line-height:1; letter-spacing:-.02em; color:var(--accent);
+    text-shadow:0 0 22px rgba(94,224,176,.4); user-select:none;
+  }
+  .brand .sub { color:var(--ink-dim); font-size:13px; letter-spacing:.02em; }
+  .brand .sub b { color:var(--ink); font-weight:600; }
+  .spacer { flex:1; }
+
+  nav.tabs { display:flex; gap:4px; }
+  nav.tabs a {
+    font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-dim);
+    padding:6px 13px; border-radius:8px; border:1px solid transparent; transition:.12s ease;
+  }
+  nav.tabs a:hover { color:var(--ink); background:var(--panel2); }
+  nav.tabs a[aria-current="page"] { color:var(--accent); border-color:var(--accent-dim); background:rgba(94,224,176,.06); }
+
+  .liveblip { display:inline-flex; align-items:center; gap:8px; color:var(--ink-faint); font-size:12px; font-family:var(--mono); }
+  .liveblip .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  main { padding:26px 28px 60px; max-width:1000px; margin:0 auto; }
+
+  .bar { display:flex; align-items:center; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+  .bar h1 { font-size:15px; font-weight:600; margin:0; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-dim); }
+  .pill { font-family:var(--mono); font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--line2); color:var(--ink-dim); }
+  .pill b { color:var(--ink); }
+
+  button {
+    font-family:var(--sans); font-size:13px; font-weight:500; cursor:pointer;
+    border:1px solid var(--line2); background:var(--panel2); color:var(--ink);
+    padding:7px 13px; border-radius:9px; transition:.12s ease; letter-spacing:.01em;
+  }
+  button:hover:not(:disabled) { border-color:var(--accent-dim); background:#20262f; }
+  button:active:not(:disabled) { transform:translateY(1px); }
+  button:disabled { opacity:.32; cursor:not-allowed; }
+  button.ghost { background:transparent; }
+
+  .jobs { display:flex; flex-direction:column; gap:12px; }
+
+  .job {
+    background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px; position:relative; overflow:hidden;
+  }
+  .job::before {
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:var(--state-c,var(--queued)); opacity:.9;
+  }
+  .job[data-state="succeeded"] { --state-c:var(--succeeded); }
+  .job[data-state="running"]   { --state-c:var(--running); }
+  .job[data-state="queued"]    { --state-c:var(--queued); }
+  .job[data-state="failed"]    { --state-c:var(--failed); }
+
+  .job .head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .job .svc { font-size:16px; font-weight:600; }
+  .job .verb { font-family:var(--mono); font-size:11px; color:var(--ink-faint); }
+  .badge { display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--state-c); }
+  .badge .dot { width:9px; height:9px; border-radius:50%; background:var(--state-c); box-shadow:0 0 10px var(--state-c); }
+  .job[data-state="running"] .badge .dot { animation:pulse 1s infinite; }
+  .job .when { margin-left:auto; font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); }
+  .job .id { font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-top:6px; }
+  .job .id b { color:var(--ink-dim); font-weight:600; }
+
+  .job .err {
+    margin-top:10px; padding:9px 11px; border-radius:10px;
+    background:rgba(255,107,107,.08); border:1px solid rgba(255,107,107,.3);
+    color:#ffb3b3; font-size:12.5px; font-family:var(--mono); line-height:1.4;
+    white-space:pre-wrap; word-break:break-word;
+  }
+
+  .arts { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+  .art {
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    background:var(--panel2);
+  }
+  .art .aname { font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+  .art .akind { font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); border:1px solid var(--line2); padding:1px 6px; border-radius:6px; }
+  .art .asize { font-family:var(--mono); font-size:11px; color:var(--ink-faint); }
+  .art .aspacer { flex:1; }
+  .art audio { height:34px; max-width:100%; }
+  .art .dl {
+    font-family:var(--mono); font-size:11.5px; color:var(--ink-dim);
+    border:1px solid var(--line2); padding:5px 10px; border-radius:8px; transition:.12s ease;
+  }
+  .art .dl:hover { color:var(--accent); border-color:var(--accent-dim); background:rgba(94,224,176,.05); }
+  .noarts { font-family:var(--mono); font-size:12px; color:var(--ink-faint); margin-top:12px; }
+
+  .pager { display:flex; align-items:center; gap:14px; margin-top:24px; justify-content:center; }
+  .pager .range { font-family:var(--mono); font-size:12px; color:var(--ink-dim); }
+
+  .empty { color:var(--ink-faint); font-family:var(--mono); font-size:13px; padding:50px 0; text-align:center; }
+
+  .toast {
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--panel2); border:1px solid var(--line2); color:var(--ink);
+    padding:11px 18px; border-radius:10px; font-size:13px; font-family:var(--mono);
+    opacity:0; pointer-events:none; transition:.2s ease; max-width:90vw; box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.err { border-color:var(--danger); color:#ffb3b3; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img class="logomark" src="/assets/logo-bars.svg" width="26" height="26" alt="">
+    <span class="logo">ass</span>
+    <span class="sub"><b>Audio Slop Server</b> · jobs</span>
+  </div>
+  <nav class="tabs">
+    <a href="/admin">Backends</a>
+    <a href="/jobs" aria-current="page">Jobs</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="liveblip"><span class="dot"></span><span id="live">connecting…</span></span>
+</header>
+
+<main>
+  <div class="bar">
+    <h1>Jobs</h1>
+    <span class="pill" id="total"></span>
+    <span class="spacer"></span>
+    <button class="ghost" id="refresh">↻ Refresh</button>
+  </div>
+  <div class="jobs" id="jobs"></div>
+  <div class="empty" id="empty" hidden>No jobs yet — run one from a service test page.</div>
+
+  <div class="pager" id="pager" hidden>
+    <button id="prev">← Newer</button>
+    <span class="range" id="range"></span>
+    <button id="next">Older →</button>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const PAGE = 25;
+let offset = 0, total = 0;
+
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function relTime(iso) {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return iso;
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return s + "s ago";
+  const m = Math.round(s / 60); if (m < 60) return m + "m ago";
+  const h = Math.round(m / 60); if (h < 24) return h + "h ago";
+  return Math.round(h / 24) + "d ago";
+}
+
+// Duration between two ISO instants, human-ish. Empty if we can't compute it.
+function dur(a, b) {
+  if (!a || !b) return "";
+  const s = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000);
+  if (isNaN(s) || s < 0) return "";
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60), rs = s % 60;
+  return m + "m" + (rs ? " " + rs + "s" : "");
+}
+
+function fmtBytes(n) {
+  if (!n && n !== 0) return "";
+  if (n < 1024) return n + " B";
+  if (n < 1024*1024) return (n/1024).toFixed(1) + " KB";
+  return (n/1024/1024).toFixed(1) + " MB";
+}
+
+function artEl(jobId, a) {
+  const el = document.createElement("div");
+  el.className = "art";
+  const url = `/v1/jobs/${encodeURIComponent(jobId)}/result/${encodeURIComponent(a.name)}`;
+  const isAudio = (a.content_type || "").startsWith("audio/") || a.kind === "audio" || a.kind === "stem";
+  el.innerHTML = `
+    <span class="aname"></span>
+    <span class="akind"></span>
+    <span class="asize"></span>
+    <span class="aspacer"></span>
+    <a class="dl" download>↓ download</a>`;
+  el.querySelector(".aname").textContent = a.name;
+  el.querySelector(".akind").textContent = a.kind || "other";
+  el.querySelector(".asize").textContent = fmtBytes(a.bytes);
+  const dl = el.querySelector(".dl");
+  dl.href = url;
+  if (isAudio) {
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.preload = "none";
+    audio.src = url;
+    el.insertBefore(audio, el.querySelector(".aspacer"));
+  }
+  return el;
+}
+
+function jobEl(j) {
+  const el = document.createElement("div");
+  el.className = "job";
+  el.dataset.state = j.state;
+  el.innerHTML = `
+    <div class="head">
+      <span class="svc"></span>
+      <span class="badge"><span class="dot"></span><span class="btext"></span></span>
+      <span class="when"></span>
+    </div>
+    <div class="id">id <b class="idv"></b> <span class="durv"></span></div>`;
+  el.querySelector(".svc").textContent = j.service;
+  el.querySelector(".btext").textContent = j.state;
+  el.querySelector(".when").textContent = relTime(j.created_at);
+  el.querySelector(".idv").textContent = j.job_id;
+  const d = dur(j.started_at, j.finished_at);
+  el.querySelector(".durv").textContent = d ? "· ran " + d : "";
+
+  if (j.state === "failed" && j.error) {
+    const err = document.createElement("div");
+    err.className = "err";
+    err.textContent = j.error;
+    el.appendChild(err);
+  }
+
+  const arts = j.artifacts || [];
+  if (arts.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "arts";
+    arts.forEach(a => wrap.appendChild(artEl(j.job_id, a)));
+    el.appendChild(wrap);
+  } else if (j.state === "succeeded") {
+    const n = document.createElement("div");
+    n.className = "noarts";
+    n.textContent = "no artifacts";
+    el.appendChild(n);
+  }
+  return el;
+}
+
+async function load() {
+  try {
+    const r = await fetch(`/v1/jobs?limit=${PAGE}&offset=${offset}`, { headers:{accept:"application/json"} });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    total = data.total || 0;
+    const jobs = data.jobs || [];
+    const box = $("#jobs");
+    box.innerHTML = "";
+    jobs.forEach(j => box.appendChild(jobEl(j)));
+    $("#empty").hidden = total > 0;
+    $("#total").innerHTML = `<b>${total}</b> total`;
+
+    const pager = $("#pager");
+    pager.hidden = total <= PAGE;
+    if (!pager.hidden) {
+      const from = total ? offset + 1 : 0;
+      const to = Math.min(offset + jobs.length, total);
+      $("#range").textContent = `${from}–${to} of ${total}`;
+      $("#prev").disabled = offset <= 0;
+      $("#next").disabled = offset + PAGE >= total;
+    }
+    $("#live").textContent = "live · " + new Date().toLocaleTimeString();
+  } catch (e) {
+    $("#live").textContent = "offline";
+    toast("Can't reach ASS: " + e.message, true);
+  }
+}
+
+function toast(msg, isErr) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.toggle("err", !!isErr);
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 3200);
+}
+
+$("#refresh").onclick = load;
+$("#prev").onclick = () => { offset = Math.max(0, offset - PAGE); load(); window.scrollTo(0,0); };
+$("#next").onclick = () => { offset += PAGE; load(); window.scrollTo(0,0); };
+load();
+</script>
+</body>
+</html>

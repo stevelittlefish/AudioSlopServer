@@ -422,6 +422,22 @@ viewing it live.)
 **Part C done** for all three implemented backends (demucs verified on the mock;
 SA3 + ACE-Step forms ready to exercise once each is up on the GPU box).
 
+### Part D — the jobs browser
+
+- [x] `GET /jobs` — a paged history of every job (`internal/web/jobs.html`,
+      embedded + served by `internal/web/web.go`), reachable from a new top-nav
+      (`Backends` / `Jobs`) added to both the admin panel and this page. One card
+      per job, newest first: service, coloured state badge (succeeded green /
+      running blue / queued amber / failed red), id, run duration, the failure
+      message for failed jobs, and each artifact with an inline `<audio>` player
+      (for audio/* + stems) plus a download link. `← Newer / Older →` paging.
+- [x] `GET /v1/jobs?limit=&offset=` backs it: returns a page of jobs (newest
+      first) each with its harvested `artifacts[]`, plus `total` for the pager.
+      New `store.ListJobs` (limit clamped ≤200, two-pass artifact fetch since the
+      single sqlite conn can't nest queries). Reuses the existing per-artifact
+      `/v1/jobs/{id}/result/{name}` for playback/download, so results stay served
+      from ASS's own store even after the backend is evicted.
+
 ## Later — The rest
 
 ### Web console polish
