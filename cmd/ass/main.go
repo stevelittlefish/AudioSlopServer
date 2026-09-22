@@ -19,6 +19,7 @@ import (
 	"github.com/stevelittlefish/AudioSlopServer/internal/config"
 	"github.com/stevelittlefish/AudioSlopServer/internal/docker"
 	"github.com/stevelittlefish/AudioSlopServer/internal/engine"
+	"github.com/stevelittlefish/AudioSlopServer/internal/reaper"
 	"github.com/stevelittlefish/AudioSlopServer/internal/results"
 	"github.com/stevelittlefish/AudioSlopServer/internal/store"
 	"github.com/stevelittlefish/AudioSlopServer/internal/supervisor"
@@ -97,6 +98,21 @@ func main() {
 
 	arb := arbiter.New(sup, cfg)
 	eng := engine.New(cfg, arb, st, res)
+
+	// The reaper: reclaims disk by deleting the oldest finished jobs once the
+	// results store outgrows the [retention] limits. Off unless a limit is set —
+	// the big server hoards forever, the peasant's box tidies up after itself.
+	if cfg.Retention.Active() {
+		rp := reaper.New(cfg.Retention, st, res)
+		eng.OnJobDone = rp.Trigger // sweep opportunistically right after a job lands
+		go rp.Run(context.Background())
+		log.Printf("retention: reaper on (max_total_mb=%d max_jobs=%d max_age=%s sweep=%s)",
+			cfg.Retention.MaxTotalMB, cfg.Retention.MaxJobs,
+			cfg.Retention.MaxAge.Duration, cfg.Retention.SweepInterval.Duration)
+	} else {
+		log.Printf("retention: off — harvested results are kept forever (set [retention] limits to reclaim disk)")
+	}
+
 	handler := api.New(cfg, eng, st, arb).Handler()
 
 	for name, svc := range cfg.Services {

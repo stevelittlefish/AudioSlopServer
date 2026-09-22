@@ -55,6 +55,18 @@ func (s *Store) Save(jobID, name string, r io.Reader) (string, int64, error) {
 	return path, n, nil
 }
 
+// RemoveJob deletes a job's entire output directory (<root>/<jobID>) and every
+// artifact in it. Idempotent: a job with nothing on disk is not an error, which
+// is exactly what the reaper wants — it's cleaning up, not auditing. The job id
+// is sanitized the same way Save does, so we only ever RemoveAll inside root.
+func (s *Store) RemoveJob(jobID string) error {
+	dir := filepath.Join(s.root, safeName2(jobID))
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("removing job dir %q: %w", dir, err)
+	}
+	return nil
+}
+
 // safeName rejects artifact names that contain path separators or traversal, so
 // a malicious or buggy backend can't write "../../etc/anything".
 func safeName(name string) (string, error) {

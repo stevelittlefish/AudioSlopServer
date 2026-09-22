@@ -300,6 +300,69 @@ func (s *Store) ListJobs(ctx context.Context, limit, offset int) ([]JobWithArtif
 	return out, total, nil
 }
 
+// TerminalJob is a finished job's retention metadata: its id, when it ended, and
+// how many bytes of artifacts it's hoarding on disk. The reaper sorts by EndedAt
+// (oldest first) and sums Bytes to decide who gets fed to the wood chipper.
+type TerminalJob struct {
+	ID      string
+	EndedAt time.Time
+	Bytes   int64
+}
+
+// TerminalJobsOldestFirst returns every job that's done (succeeded or failed),
+// oldest-ended first, each with the total bytes of its artifacts. Only terminal
+// jobs are candidates: a queued/running job is live work and must never be reaped
+// out from under a client. "Ended" is finished_at, falling back to created_at for
+// the rare job that reached a terminal state without one recorded.
+func (s *Store) TerminalJobsOldestFirst(ctx context.Context) ([]TerminalJob, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT j.id,
+		       COALESCE(j.finished_at, j.created_at) AS ended,
+		       COALESCE(SUM(a.bytes), 0)             AS bytes
+		FROM jobs j
+		LEFT JOIN artifacts a ON a.job_id = j.id
+		WHERE j.state IN (?, ?)
+		GROUP BY j.id
+		ORDER BY ended ASC`, StateSucceeded, StateFailed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TerminalJob
+	for rows.Next() {
+		var (
+			tj    TerminalJob
+			ended int64
+		)
+		if err := rows.Scan(&tj.ID, &ended, &tj.Bytes); err != nil {
+			return nil, err
+		}
+		tj.EndedAt = time.Unix(0, ended)
+		out = append(out, tj)
+	}
+	return out, rows.Err()
+}
+
+// DeleteJob removes a job and its artifact rows in one transaction. It touches
+// only metadata — the on-disk bytes are the results store's problem (the caller
+// deletes those separately). Foreign keys are off in this driver, so we can't
+// lean on ON DELETE CASCADE; we delete both tables by hand.
+func (s *Store) DeleteJob(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM artifacts WHERE job_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM jobs WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // GetArtifact returns one named artifact's metadata (including its on-disk path).
 func (s *Store) GetArtifact(ctx context.Context, jobID, name string) (Artifact, error) {
 	var a Artifact

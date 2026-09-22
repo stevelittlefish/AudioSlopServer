@@ -456,20 +456,28 @@ SA3 + ACE-Step forms ready to exercise once each is up on the GPU box).
 
 ### Artifact lifetime & cleanup
 
-Today **nothing is ever cleaned up**. Harvested artifacts live forever in ASS's
-results store (`<results_dir>/<job_id>/<name>` + sqlite `artifacts` rows) with no
-TTL/prune/delete anywhere in the code, AND a duplicate copy accumulates on each
-backend's bind-mounted `/app/outputs` (`/srv/ass/outputs/<svc>`) because ASS
-harvests over HTTP but never tells the backend to delete. On a busy box that's
-unbounded disk growth in two places. (Inputs are fine — backends unlink their
-temp upload after the job; ASS buffers uploads in memory, not disk.)
+The ASS-side results store now self-cleans (the reaper, below). Still open: a
+duplicate copy accumulates on each backend's bind-mounted `/app/outputs`
+(`/srv/ass/outputs/<svc>`) because ASS harvests over HTTP but never tells the
+backend to delete, and there's no manual per-job delete. (Inputs are fine —
+backends unlink their temp upload after the job; ASS buffers uploads in memory,
+not disk.) Empirically ~80 MB/job → ~8 GB per 100 jobs (16 GB / 200 on the live
+box), so it's the DEMUCS WAV stems and WAV/FLAC generations that dominate.
 
-- [ ] **Retention policy for the ASS results store.** Age- and/or size-based
-      prune of `<results_dir>` that also deletes the matching sqlite rows (jobs +
-      artifacts). Config it under a `[storage]` knob (e.g. `results_ttl`,
-      `results_max_gb`); off by default (the big server keeps everything), on for
-      constrained boxes — mirrors the `idle_ttl` philosophy. One-dir-per-job
-      layout makes each delete a single `RemoveAll`.
+- [x] **Retention policy for the ASS results store** (`internal/reaper`). A
+      configurable reaper deletes the OLDEST finished jobs — sqlite rows (jobs +
+      artifacts, in one tx; FKs are off in modernc so we delete both by hand) AND
+      the on-disk dir (`results.RemoveJob` = one `RemoveAll`) — once any
+      `[retention]` limit is tripped: `max_total_mb` (size budget, the one that
+      matters for audio), `max_jobs` (count), `max_age` (duration). Bytes deleted
+      before rows, so a mid-sweep crash leaks a harmless orphan row (tidied next
+      sweep), never orphan files. Only terminal jobs are candidates — live work is
+      never touched. Runs at startup, on a `sweep_interval` ticker (default 10m),
+      and opportunistically after each job finishes (engine's `OnJobDone` hook →
+      `reaper.Trigger`, coalesced). All limits OFF by default (big server hoards);
+      inert — no goroutine — when unset. Store: `TerminalJobsOldestFirst` +
+      `DeleteJob`. Unit-tested (`plan` for each limit + a full sweep deleting files
+      and rows).
 - [ ] **`DELETE /v1/jobs/{id}` on ASS** — no way to remove a job/its artifacts
       today. Add the endpoint (RemoveAll the job dir + delete the sqlite rows),
       and a delete button on the admin/test pages. Lease-safe: refuse (or defer)

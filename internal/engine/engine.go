@@ -41,6 +41,12 @@ type Engine struct {
 	jobTimeout time.Duration
 	// How often we poll a backend for job status.
 	pollInterval time.Duration
+
+	// OnJobDone, if set, is called (non-blocking, best-effort) whenever a job
+	// reaches a terminal state — the reaper hangs its "a fresh result just landed,
+	// maybe sweep disk" trigger here. Nil by default; the engine works fine without
+	// it, and it must never block the job path.
+	OnJobDone func()
 }
 
 // New builds an engine.
@@ -130,6 +136,16 @@ func (e *Engine) process(jobID, service string, body []byte, contentType string)
 		log.Printf("[engine] job %s: MarkSucceeded: %v", jobID, err)
 	}
 	log.Printf("[engine] job %s succeeded with %d artifact(s)", jobID, len(final.Artifacts))
+	e.jobDone()
+}
+
+// jobDone fires the terminal-state hook if one is wired, ignoring a nil hook so
+// callers don't have to guard it. Best-effort: the reaper's Trigger is itself
+// non-blocking, so this never stalls the job path.
+func (e *Engine) jobDone() {
+	if e.OnJobDone != nil {
+		e.OnJobDone()
+	}
 }
 
 // BackendInfo makes a backend resident (queuing behind any swap) and returns its
@@ -226,6 +242,7 @@ func (e *Engine) fail(jobID, reason string) {
 	if err := e.store.MarkFailed(ctx, jobID, reason); err != nil {
 		log.Printf("[engine] job %s: MarkFailed also failed: %v", jobID, err)
 	}
+	e.jobDone()
 }
 
 // compile-time check that the real arbiter satisfies our interface.

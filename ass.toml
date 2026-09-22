@@ -29,6 +29,21 @@ context_tax_mb = 400   # default parked VRAM tax for a park backend that hasn't 
 addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex).
                        # ":2645" binds all interfaces (0.0.0.0) — LAN-reachable.
 
+[retention]
+# The reaper: reclaim disk by deleting the OLDEST finished jobs (their DB rows AND
+# their harvested files) once the results store outgrows these limits. Only
+# succeeded/failed jobs are ever touched — live work is safe. Real slop runs about
+# 80 MB/job (DEMUCS WAV stems dominate), so ~8 GB per 100 jobs; budget accordingly.
+# Everything here is OFF by default (keep forever) — the big server has the room.
+max_total_mb = 0       # total size cap for all results on disk. 0 = unlimited. The
+                       # knob that actually matters for audio; e.g. 50000 ≈ 50 GB.
+max_jobs     = 0       # keep at most this many finished jobs. 0 = unlimited.
+max_age      = "0"     # delete finished jobs older than this (e.g. "720h" = 30d).
+                       # "0" = keep forever regardless of age.
+sweep_interval = "10m" # how often the reaper enforces the above. It also sweeps at
+                       # startup and right after each job finishes. Ignored when all
+                       # limits are 0 (reaper never starts).
+
 [web]
 # The human-facing web console and its operator controls (park/stop/unload-all a
 # backend by hand). On by default; it shares the [server] listener, so it's on

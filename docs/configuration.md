@@ -25,6 +25,10 @@ See [`ass.toml`](../ass.toml) (real-ish) and [`ass.dev.toml`](../ass.dev.toml)
 | `web.enabled` | bool | `true` | Serve the web console + operator controls (park/stop/unload-all by hand). Shares the `server.addr` listener; **no auth yet**, so keep ASS off the open internet. Set `false` for a strictly API-only box. |
 | `storage.db_path` | string | `data/ass.db` | The sqlite job store. |
 | `storage.results_dir` | string | `data/results` | On-disk harvested-artifact store. |
+| `retention.max_total_mb` | int | `0` (off) | Total on-disk size cap for harvested results. Over it, the reaper deletes oldest finished jobs (rows **and** files) until back under. The knob that matters for audio (~80 MB/job, ~8 GB per 100 jobs). |
+| `retention.max_jobs` | int | `0` (off) | Keep at most this many finished jobs; oldest deleted beyond it. |
+| `retention.max_age` | duration | `0` (off) | Delete finished jobs older than this (e.g. `"720h"` = 30 days). |
+| `retention.sweep_interval` | duration | `10m` | How often the reaper enforces the limits. It also sweeps at startup and right after each job finishes. Ignored when every limit is `0` (the reaper never starts). |
 | `docker.socket` | string | platform default | Docker daemon socket (e.g. `/var/run/docker.sock`). |
 
 > **Why `:2645`?** It's `0xA55` — "ASS" spelled in hex. Unique, not an `80xx`,

@@ -13,13 +13,14 @@ import (
 
 // Config is the whole of ASS's configuration, straight from the TOML file.
 type Config struct {
-	Memory   Memory             `toml:"memory"`
-	GPU      GPU                `toml:"gpu"`
-	Server   Server             `toml:"server"`
-	Storage  Storage            `toml:"storage"`
-	Docker   Docker             `toml:"docker"`
-	Web      Web                `toml:"web"`
-	Services map[string]Service `toml:"services"`
+	Memory    Memory             `toml:"memory"`
+	GPU       GPU                `toml:"gpu"`
+	Server    Server             `toml:"server"`
+	Storage   Storage            `toml:"storage"`
+	Retention Retention          `toml:"retention"`
+	Docker    Docker             `toml:"docker"`
+	Web       Web                `toml:"web"`
+	Services  map[string]Service `toml:"services"`
 
 	// DisabledServices names the [services.*] entries dropped because they set
 	// disabled = true. Not from the TOML — filled in by validate() after it
@@ -49,6 +50,38 @@ func (c *Config) WebEnabled() bool {
 type Storage struct {
 	DBPath     string `toml:"db_path"`
 	ResultsDir string `toml:"results_dir"`
+}
+
+// Retention governs the reaper: how long ASS hoards harvested job results before
+// deleting the oldest to reclaim disk. Everything defaults to "keep forever" —
+// the big server has the room and losing a result is worse than a full disk until
+// someone says otherwise. Set any combination of the three limits on a box that
+// actually fills up (empirically ~80 MB/job, so ~8 GB per 100 jobs). Only DONE
+// jobs (succeeded/failed) are ever reaped; live work is untouchable, and within a
+// sweep the OLDEST-finished go first.
+type Retention struct {
+	// MaxTotalMB caps the total size of all harvested artifacts on disk. When the
+	// results store grows past this, the reaper deletes oldest-first until it's back
+	// under. 0 = unlimited. This is the knob that matters most for audio.
+	MaxTotalMB int64 `toml:"max_total_mb"`
+	// MaxJobs caps how many terminal jobs are kept, oldest deleted beyond it. 0 =
+	// unlimited.
+	MaxJobs int `toml:"max_jobs"`
+	// MaxAge deletes any terminal job that finished longer ago than this. 0 = keep
+	// forever regardless of age.
+	MaxAge Duration `toml:"max_age"`
+	// SweepInterval is how often the reaper wakes to enforce the above (it also runs
+	// once at startup and opportunistically after each job completes, so age limits
+	// still get caught between ticks). Defaults to 10m when any limit is set; ignored
+	// entirely when retention is off.
+	SweepInterval Duration `toml:"sweep_interval"`
+}
+
+// RetentionActive reports whether any retention limit is set — i.e. whether the
+// reaper has anything to enforce. All-zero means "hoard forever", so the reaper
+// need not even start.
+func (r Retention) Active() bool {
+	return r.MaxTotalMB > 0 || r.MaxJobs > 0 || r.MaxAge.Duration > 0
 }
 
 // Docker is how ASS reaches the daemon. Empty socket = the platform default.
@@ -206,6 +239,21 @@ func (c *Config) validate() error {
 	}
 	if c.Storage.ResultsDir == "" {
 		c.Storage.ResultsDir = "data/results"
+	}
+	if c.Retention.MaxTotalMB < 0 {
+		return fmt.Errorf("retention.max_total_mb %d is negative", c.Retention.MaxTotalMB)
+	}
+	if c.Retention.MaxJobs < 0 {
+		return fmt.Errorf("retention.max_jobs %d is negative", c.Retention.MaxJobs)
+	}
+	if c.Retention.MaxAge.Duration < 0 {
+		return fmt.Errorf("retention.max_age %s is negative", c.Retention.MaxAge.Duration)
+	}
+	// Only default the sweep cadence when retention is actually in use; a wholly
+	// unset [retention] stays inert (no reaper, no timer) rather than spinning a
+	// goroutine to enforce nothing. "0" explicitly disables just the periodic sweep.
+	if c.Retention.Active() && c.Retention.SweepInterval.Duration == 0 {
+		c.Retention.SweepInterval.Duration = 10 * time.Minute
 	}
 	// Two ways to gate the card. When vram_budget_mb is set, VRAM MB is the real
 	// limit and max_resident is an optional secondary cap (0 = unlimited, let the
