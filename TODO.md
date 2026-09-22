@@ -474,8 +474,11 @@ box), so it's the DEMUCS WAV stems and WAV/FLAC generations that dominate.
       sweep), never orphan files. Only terminal jobs are candidates — live work is
       never touched. Runs at startup, on a `sweep_interval` ticker (default 10m),
       and opportunistically after each job finishes (engine's `OnJobDone` hook →
-      `reaper.Trigger`, coalesced). All limits OFF by default (big server hoards);
-      inert — no goroutine — when unset. Store: `TerminalJobsOldestFirst` +
+      `reaper.Trigger`, coalesced). The size cap **defaults ON at 15 GB** even with
+      no `[retention]` table (`max_total_mb` is a `*int64` so unset→15000 is told
+      apart from an explicit `0` = hoard forever); count/age limits off by default.
+      Inert — no goroutine — only when every limit is off. Store:
+      `TerminalJobsOldestFirst` +
       `DeleteJob`. Unit-tested (`plan` for each limit + a full sweep deleting files
       and rows).
 - [ ] **`DELETE /v1/jobs/{id}` on ASS** — no way to remove a job/its artifacts

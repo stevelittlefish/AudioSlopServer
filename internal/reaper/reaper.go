@@ -110,7 +110,7 @@ func (r *Reaper) plan(jobs []store.TerminalJob, now time.Time) []store.TerminalJ
 	for _, j := range jobs {
 		total += j.Bytes
 	}
-	budget := r.cfg.MaxTotalMB * 1024 * 1024
+	budget := r.cfg.TotalMB() * 1024 * 1024
 
 	var victims []store.TerminalJob
 	remaining := len(jobs)

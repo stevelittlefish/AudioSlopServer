@@ -53,17 +53,19 @@ type Storage struct {
 }
 
 // Retention governs the reaper: how long ASS hoards harvested job results before
-// deleting the oldest to reclaim disk. Everything defaults to "keep forever" —
-// the big server has the room and losing a result is worse than a full disk until
-// someone says otherwise. Set any combination of the three limits on a box that
-// actually fills up (empirically ~80 MB/job, so ~8 GB per 100 jobs). Only DONE
-// jobs (succeeded/failed) are ever reaped; live work is untouchable, and within a
+// deleting the oldest to reclaim disk. The size cap defaults ON — 15 GB — because
+// a box that silently fills its disk is worse than one that quietly forgets last
+// month's slop (empirically ~80 MB/job, so ~8 GB per 100 jobs). Raise it, add the
+// other limits, or set max_total_mb = 0 to hoard forever. Only DONE jobs
+// (succeeded/failed) are ever reaped; live work is untouchable, and within a
 // sweep the OLDEST-finished go first.
 type Retention struct {
 	// MaxTotalMB caps the total size of all harvested artifacts on disk. When the
 	// results store grows past this, the reaper deletes oldest-first until it's back
-	// under. 0 = unlimited. This is the knob that matters most for audio.
-	MaxTotalMB int64 `toml:"max_total_mb"`
+	// under. It's a *int64 so we can tell "unset" (nil -> the 15000 MB default)
+	// apart from an explicit 0 (unlimited, hoard forever). The knob that matters
+	// most for audio.
+	MaxTotalMB *int64 `toml:"max_total_mb"`
 	// MaxJobs caps how many terminal jobs are kept, oldest deleted beyond it. 0 =
 	// unlimited.
 	MaxJobs int `toml:"max_jobs"`
@@ -77,11 +79,22 @@ type Retention struct {
 	SweepInterval Duration `toml:"sweep_interval"`
 }
 
-// RetentionActive reports whether any retention limit is set — i.e. whether the
-// reaper has anything to enforce. All-zero means "hoard forever", so the reaper
-// need not even start.
+// TotalMB is the effective size budget in MB: the configured value, or 0 when it's
+// been explicitly disabled. Only call after validate() has filled the default —
+// before that a nil pointer reads as 0 (no budget yet), which is why validate
+// sets the default before anything consults this.
+func (r Retention) TotalMB() int64 {
+	if r.MaxTotalMB == nil {
+		return 0
+	}
+	return *r.MaxTotalMB
+}
+
+// Active reports whether the reaper has anything to enforce — any of the three
+// limits set. With the default 15 GB size cap this is normally true; it's false
+// only when every limit is off (max_total_mb = 0 and no count/age limit).
 func (r Retention) Active() bool {
-	return r.MaxTotalMB > 0 || r.MaxJobs > 0 || r.MaxAge.Duration > 0
+	return r.TotalMB() > 0 || r.MaxJobs > 0 || r.MaxAge.Duration > 0
 }
 
 // Docker is how ASS reaches the daemon. Empty socket = the platform default.
@@ -240,8 +253,15 @@ func (c *Config) validate() error {
 	if c.Storage.ResultsDir == "" {
 		c.Storage.ResultsDir = "data/results"
 	}
-	if c.Retention.MaxTotalMB < 0 {
-		return fmt.Errorf("retention.max_total_mb %d is negative", c.Retention.MaxTotalMB)
+	// Default the size cap ON at 15 GB when the key is absent, so a box with no
+	// [retention] table still tidies up instead of filling its disk. An explicit
+	// max_total_mb = 0 opts back out (hoard forever).
+	if c.Retention.MaxTotalMB == nil {
+		def := int64(15000)
+		c.Retention.MaxTotalMB = &def
+	}
+	if *c.Retention.MaxTotalMB < 0 {
+		return fmt.Errorf("retention.max_total_mb %d is negative", *c.Retention.MaxTotalMB)
 	}
 	if c.Retention.MaxJobs < 0 {
 		return fmt.Errorf("retention.max_jobs %d is negative", c.Retention.MaxJobs)

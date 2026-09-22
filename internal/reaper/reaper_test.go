@@ -14,6 +14,9 @@ import (
 // mb makes a Retention with just a byte budget; the other tests set their own.
 func ret(r config.Retention) *Reaper { return &Reaper{cfg: r} }
 
+// mbptr is the *int64 the size cap wants (nil = unset/unlimited in a raw struct).
+func mbptr(v int64) *int64 { return &v }
+
 func jobs(specs ...store.TerminalJob) []store.TerminalJob { return specs }
 
 func ids(vs []store.TerminalJob) string {
@@ -66,7 +69,7 @@ func TestPlanMaxTotalBytes(t *testing.T) {
 		store.TerminalJob{ID: "c", EndedAt: now.Add(3), Bytes: 30 * mb},
 		store.TerminalJob{ID: "d", EndedAt: now.Add(4), Bytes: 30 * mb},
 	)
-	got := ids(ret(config.Retention{MaxTotalMB: 100}).plan(in, now))
+	got := ids(ret(config.Retention{MaxTotalMB: mbptr(100)}).plan(in, now))
 	if got != "a" {
 		t.Fatalf("MaxTotalMB=100: want just a reaped, got %q", got)
 	}

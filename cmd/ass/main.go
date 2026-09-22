@@ -107,7 +107,7 @@ func main() {
 		eng.OnJobDone = rp.Trigger // sweep opportunistically right after a job lands
 		go rp.Run(context.Background())
 		log.Printf("retention: reaper on (max_total_mb=%d max_jobs=%d max_age=%s sweep=%s)",
-			cfg.Retention.MaxTotalMB, cfg.Retention.MaxJobs,
+			cfg.Retention.TotalMB(), cfg.Retention.MaxJobs,
 			cfg.Retention.MaxAge.Duration, cfg.Retention.SweepInterval.Duration)
 	} else {
 		log.Printf("retention: off — harvested results are kept forever (set [retention] limits to reclaim disk)")

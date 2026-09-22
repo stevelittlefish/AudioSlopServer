@@ -34,10 +34,11 @@ addr = ":2645"         # where ASS itself listens (0xA55 = "ASS" in hex).
 # their harvested files) once the results store outgrows these limits. Only
 # succeeded/failed jobs are ever touched — live work is safe. Real slop runs about
 # 80 MB/job (DEMUCS WAV stems dominate), so ~8 GB per 100 jobs; budget accordingly.
-# Everything here is OFF by default (keep forever) — the big server has the room.
+# The size cap defaults ON at 15 GB even with no [retention] table; the count and
+# age limits are off by default. Set max_total_mb = 0 to hoard forever.
 max_total_mb = 15000   # total size cap for all results on disk (~15 GB, ~185 jobs
                        # at ~80 MB each). Over it, the reaper deletes oldest-first.
-                       # 0 = unlimited.
+                       # This is also the built-in default. 0 = unlimited.
 max_jobs     = 0       # keep at most this many finished jobs. 0 = unlimited.
 max_age      = "0"     # delete finished jobs older than this (e.g. "720h" = 30d).
                        # "0" = keep forever regardless of age.

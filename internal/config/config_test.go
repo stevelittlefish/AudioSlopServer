@@ -87,3 +87,35 @@ func TestAllServicesDisabled(t *testing.T) {
 		t.Errorf("error %q should mention that services are disabled", err)
 	}
 }
+
+// TestRetentionDefaultsOn proves the size cap defaults ON at 15 GB when no
+// [retention] table is given, so a bare config still tidies its disk — while an
+// explicit max_total_mb = 0 opts back out to hoard-forever.
+func TestRetentionDefaultsOn(t *testing.T) {
+	base := func() *Config {
+		return &Config{Services: map[string]Service{"x": {Image: "i", Port: 1, Evict: EvictStop}}}
+	}
+
+	// Absent key -> default 15000 MB, reaper active.
+	c := base()
+	if err := c.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if got := c.Retention.TotalMB(); got != 15000 {
+		t.Fatalf("default size cap: want 15000, got %d", got)
+	}
+	if !c.Retention.Active() {
+		t.Fatal("retention should be active with the default size cap")
+	}
+
+	// Explicit 0 -> unlimited, reaper inert.
+	c = base()
+	zero := int64(0)
+	c.Retention.MaxTotalMB = &zero
+	if err := c.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if c.Retention.TotalMB() != 0 || c.Retention.Active() {
+		t.Fatalf("explicit 0 should disable: TotalMB=%d Active=%v", c.Retention.TotalMB(), c.Retention.Active())
+	}
+}
