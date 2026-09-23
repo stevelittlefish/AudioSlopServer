@@ -23,7 +23,7 @@ body {
 a { color:var(--accent); text-decoration:none; }
 
 header.top { display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:22px 28px; border-bottom:1px solid var(--line); background:linear-gradient(180deg,rgba(255,255,255,.02),transparent); }
-.brand { display:flex; align-items:baseline; gap:12px; }
+.brand { display:flex; align-items:baseline; gap:12px; text-decoration:none; color:inherit; }
 .brand .logomark { width:28px; height:28px; align-self:center; display:block; user-select:none; filter:drop-shadow(0 0 10px rgba(94,224,176,.35)); }
 .brand .logo { font-family:var(--mono); font-weight:700; font-size:30px; line-height:1; letter-spacing:-.02em; color:var(--accent); text-shadow:0 0 22px rgba(94,224,176,.4); user-select:none; }
 .brand .sub { color:var(--ink-dim); font-size:13px; letter-spacing:.02em; }

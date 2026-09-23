@@ -37,7 +37,7 @@
     padding:22px 28px; border-bottom:1px solid var(--line);
     background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);
   }
-  .brand { display:flex; align-items:baseline; gap:12px; }
+  .brand { display:flex; align-items:baseline; gap:12px; text-decoration:none; color:inherit; }
   .brand .logomark { width:28px; height:28px; align-self:center; display:block; user-select:none; filter:drop-shadow(0 0 10px rgba(94,224,176,.35)); }
   .brand .logo {
     font-family:var(--mono); font-weight:700; font-size:30px;
@@ -246,11 +246,11 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">
+  <a class="brand" href="/admin" title="Back to the dashboard">
     <img class="logomark" src="/assets/logo-bars.svg" width="26" height="26" alt="">
     <span class="logo">ass</span>
     <span class="sub"><b>Audio Slop Server</b> · admin console</span>
-  </div>
+  </a>
   <nav class="tabs">
     <a href="/admin" aria-current="page">Backends</a>
     <a href="/jobs">Jobs</a>
